@@ -1,0 +1,46 @@
+# 编译产物
+/bin/
+*.exe
+*.test
+*.out
+*.prof
+
+# 日志与本地数据
+*.log
+/data/
+
+# 编辑器与系统文件
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 本地环境
+.env
+.env.*
+!.env.example
+
+# 本地构建产物
+/netmon-linux
+/netmon-linux.exe
+# Tauri 客户端
+/client/src-tauri/binaries/
+/client/node_modules/
+/client/dist/
+/client/src-tauri/target/
+/client/src-tauri/gen/
+npm-debug.log*
+# 移动端图标（本项目仅 Windows 桌面目标）
+/client/src-tauri/icons/android/
+/client/src-tauri/icons/ios/
+
+# Python 本地环境与模型权重（推理/训练用，不入库）
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+/models/
+*.gguf
+*.onnx
+*.safetensors

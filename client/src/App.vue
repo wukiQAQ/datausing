@@ -1,0 +1,2384 @@
+<template>
+  <div class="shell">
+    <div class="tabbar">
+      <button
+        v-for="t in tabs"
+        :key="t.id"
+        class="tab"
+        :class="{ active: t.id === activeId }"
+        type="button"
+        :title="t.base || '未配置连接'"
+        @click="switchTab(t.id)"
+      >
+        <span class="dot" :class="{ on: t.snapshot && t.snapshot.connected }"></span>
+        <span class="tab-title">{{ t.title }}</span>
+        <span class="tab-close" @click.stop="closeTabUI(t.id)">×</span>
+      </button>
+      <button class="tab add" type="button" title="新增工作区页面" @click="createTabUI">＋</button>
+      <span class="muted tab-hint">多开：同一窗口内新建/切换多个连接页面</span>
+    </div>
+
+    <div class="layout">
+    <transition name="toast">
+      <div v-if="toast.show" class="toast" :class="'toast-' + toast.type" @click="toast.show = false">
+        {{ toast.text }}
+      </div>
+    </transition>
+
+    <!-- 左侧图标导航栏：悬停放大并显示文字 -->
+    <nav class="rail">
+      <button
+        v-for="item in navItems"
+        :key="item.key"
+        class="rail-btn"
+        :class="{ active: nav === item.key }"
+        type="button"
+        :title="item.label"
+        @click="nav = item.key"
+      >
+        <span class="rail-icon">{{ item.icon }}</span>
+        <span class="rail-txt">{{ item.label }}</span>
+      </button>
+      <div class="rail-grow"></div>
+      <button class="rail-btn" type="button" title="设置" @click="settingsOpen = !settingsOpen">
+        <span class="rail-icon">⚙️</span>
+        <span class="rail-txt">设置</span>
+      </button>
+    </nav>
+
+    <!-- 账号管理 / 连接日志 面板 -->
+    <aside v-if="nav === 'accounts'" class="side card">
+      <div class="panel-title">账号管理</div>
+      <div class="muted hint">点击"切换"即可切换连接，图表会自动刷新</div>
+
+      <!-- 数据来源三选一：远程 Linux / 本机 Windows 实时抓包 / 离线 pcap 文件 -->
+      <div class="field">
+        <label>数据来源</label>
+        <div class="seg">
+          <button
+            v-for="m in SOURCE_MODES"
+            :key="m"
+            class="seg-btn"
+            :class="{ active: sourceMode === m }"
+            type="button"
+            @click="setSourceMode(m)"
+          >
+            {{ modeLabel(m) }}
+          </button>
+        </div>
+        <div class="muted small">当前来源：{{ modeLabel(sourceMode) }}</div>
+        <div v-if="sourceNotice" class="muted small" :class="{ warn: !sourceSupport.ok }">{{ sourceNotice }}</div>
+      </div>
+
+      <!-- 离线 pcap：先启动本机 netmon.exe 回放文件，再用它给出的地址走原有连接流程 -->
+      <div v-if="sourceMode === 'offline'" class="field">
+        <label>pcap 文件（本机路径）</label>
+        <input
+          v-model="sourcePref.pcapPath"
+          class="file-path"
+          placeholder="D:\pcaps\demo.pcap"
+          @change="persistSourcePref"
+          @keyup.enter="startLocalAnalysis"
+        />
+        <div class="muted small">也可以把 pcap 文件从资源管理器拖进窗口，路径会自动填入</div>
+        <div class="muted small">数据目录：{{ localDataDirView }}</div>
+        <div class="row">
+          <button class="btn primary grow" type="button" :disabled="localEngineBusy" @click="startLocalAnalysis">
+            {{ localEngineBusy ? "正在启动…" : "启动本机分析" }}
+          </button>
+          <button
+            class="btn danger"
+            type="button"
+            :disabled="localEngineBusy || !localEngine"
+            @click="stopLocalAnalysis"
+          >
+            停止本机分析
+          </button>
+        </div>
+        <div v-if="localEngine" class="muted small">本机引擎：{{ localEngine.base }}（PID {{ localEngine.pid }}）</div>
+        <div v-if="localEngineError" class="banner banner-err">{{ localEngineError }}</div>
+      </div>
+
+      <!-- 本机 Windows 实时抓包：客户端拉起本机 netmon.exe（-source live），需要管理员权限 -->
+      <div v-else-if="sourceMode === 'local'" class="field">
+        <div class="muted small">数据目录：{{ localDataDirView }}</div>
+        <div class="muted small">网卡：自动选择默认路由出口网卡（仓库脚本可用 -Iface 指定本机 IPv4）</div>
+        <div class="row">
+          <button class="btn primary grow" type="button" :disabled="localEngineBusy" @click="startLocalAnalysis">
+            {{ localEngineBusy ? "正在启动…" : "启动本机实时抓包" }}
+          </button>
+          <button
+            class="btn danger"
+            type="button"
+            :disabled="localEngineBusy || !localEngine"
+            @click="stopLocalAnalysis"
+          >
+            停止本机抓包
+          </button>
+        </div>
+        <div v-if="localEngine" class="muted small">本机引擎：{{ localEngine.base }}（PID {{ localEngine.pid }}）</div>
+        <div v-if="localEngineError" class="banner banner-err">{{ localEngineError }}</div>
+      </div>
+
+      <div class="field">
+        <label>连接名称</label>
+        <input v-model="form.name" placeholder="例如：CentOS" @keyup.enter="connect" />
+      </div>
+      <div class="field">
+        <label>服务器地址</label>
+        <input v-model="form.base" placeholder="192.168.1.100:8080" @keyup.enter="connect" />
+      </div>
+      <div class="field">
+        <label>访问令牌（可选）</label>
+        <div class="token-row">
+          <input
+            v-model="form.token"
+            :type="showToken ? 'text' : 'password'"
+            placeholder="服务端 api.token"
+            @keyup.enter="connect"
+          />
+          <button class="btn eye" type="button" @click="showToken = !showToken">
+            {{ showToken ? "隐藏" : "显示" }}
+          </button>
+        </div>
+      </div>
+      <div class="row">
+        <button
+          class="btn primary grow"
+          type="button"
+          :disabled="connectDisabled"
+          @click="connecting ? cancelConnect() : connect()"
+        >
+          {{ connectButtonLabel(connecting, connected) }}
+        </button>
+        <button class="btn" type="button" @click="saveProfile">保存</button>
+        <button v-if="connected" class="btn danger" type="button" @click="disconnect">断开</button>
+      </div>
+      <div v-if="banner.show" class="banner" :class="'banner-' + banner.kind">{{ banner.text }}</div>
+
+      <div class="muted section-title">已保存的连接（连接成功后自动记入，切换自动刷新）</div>
+      <div v-if="!profiles.length" class="muted empty">还没有记录：连接一次后会出现在这里</div>
+      <div v-for="p in profiles" :key="p.base" class="profile">
+        <button
+          class="profile-main"
+          type="button"
+          :class="{ active: connected && p.base === form.base }"
+          @click="switchProfile(p)"
+        >
+          <span class="dot" :class="{ on: connected && p.base === form.base }"></span>
+          <span class="profile-name">{{ profileName(p) }}</span>
+          <span class="muted profile-addr">{{ p.base }} · {{ lastUsedText(p.lastUsed) }}</span>
+        </button>
+        <button class="btn small" type="button" @click="useProfile(p)">编辑</button>
+        <button class="profile-del" type="button" title="删除" @click="deleteProfile(p.base)">×</button>
+      </div>
+    </aside>
+
+    <aside v-else-if="nav === 'topn'" class="side card">
+      <div class="panel-title">流量排行</div>
+      <div class="muted hint">{{ panelTitle(topnRes) }}</div>
+      <div class="row">
+        <button
+          v-for="r in TOPN_RANGES"
+          :key="r.value"
+          class="btn small"
+          :class="{ primary: topnSince === r.value }"
+          type="button"
+          @click="setTopnRange(r.value)"
+        >{{ r.label }}</button>
+        <button class="btn small" type="button" :disabled="topnLoading" @click="loadTopN">
+          {{ topnLoading ? "刷新中…" : "刷新" }}
+        </button>
+      </div>
+      <div v-if="topnError" class="banner banner-err">{{ topnError }}</div>
+
+      <div class="muted section-title">TOP IP</div>
+      <div v-if="!topnRes.by_ip || !topnRes.by_ip.length" class="muted empty">暂无数据（会话需空闲后落库）</div>
+      <div v-for="e in topnRes.by_ip || []" :key="'ip-' + e.key" class="topn-row">
+        <span class="topn-key">{{ entryLabel('ip', e.key) }}</span>
+        <span class="topn-bar"><i :style="{ width: barWidth(e.percent) }"></i></span>
+        <span class="muted small">{{ entrySummary(e) }}</span>
+      </div>
+
+      <div class="muted section-title">协议分布</div>
+      <div v-if="!topnRes.by_proto || !topnRes.by_proto.length" class="muted empty">暂无数据</div>
+      <div v-for="e in topnRes.by_proto || []" :key="'proto-' + e.key" class="topn-row">
+        <span class="topn-key">{{ entryLabel('proto', e.key) }}</span>
+        <span class="topn-bar"><i :style="{ width: barWidth(e.percent) }"></i></span>
+        <span class="muted small">{{ entrySummary(e) }}</span>
+      </div>
+
+      <div class="muted section-title">TOP 端口</div>
+      <div v-if="!topnRes.by_port || !topnRes.by_port.length" class="muted empty">暂无数据</div>
+      <div v-for="e in topnRes.by_port || []" :key="'port-' + e.key" class="topn-row">
+        <span class="topn-key">{{ entryLabel('port', e.key) }}</span>
+        <span class="topn-bar"><i :style="{ width: barWidth(e.percent) }"></i></span>
+        <span class="muted small">{{ entrySummary(e) }}</span>
+      </div>
+    </aside>
+
+    <aside v-else-if="nav === 'hosts'" class="side card">
+      <div class="panel-title">主机（{{ hostSummary.online }}/{{ hostSummary.total }} 在线）</div>
+      <div class="muted hint">已保存的连接会自动探测；点「切换」即可连到该主机</div>
+      <div class="row">
+        <button class="btn small" type="button" :disabled="hostProbing" @click="probeAllHosts">
+          {{ hostProbing ? "探测中…" : "刷新状态" }}
+        </button>
+      </div>
+      <div v-if="!hostRows.length" class="muted empty">还没有保存的连接</div>
+      <div v-for="h in hostRows" :key="h.base" class="host-row">
+        <span class="dot" :class="hostStatus(h.probe).cls"></span>
+        <div class="host-main">
+          <div class="host-name">
+            {{ h.name }}<span class="muted small"> · {{ hostVersion(h.probe) }}</span>
+          </div>
+          <div class="muted small">{{ h.base }}</div>
+          <div class="muted small">
+            {{ h.probe && h.probe.ok ? hostMetrics(h.probe) : h.probe ? h.probe.error : "未探测" }}
+          </div>
+          <div v-if="h.probe && h.probe.ok" class="host-badges">
+            <span v-for="b in featureBadges(h.probe)" :key="b" class="badge-mini">{{ b }}</span>
+          </div>
+        </div>
+        <button class="btn small" type="button" @click="switchProfile(h)">切换</button>
+      </div>
+    </aside>
+
+    <!-- Linux 指令：所有分类的白名单指令集中在这一个左侧任务选项里 -->
+    <aside v-else-if="nav === COMMANDS_NAV.key" class="side card">
+      <div class="panel-title">{{ COMMANDS_NAV.label }} · 全部指令</div>
+      <div class="muted hint">
+        共 {{ actionTotal }} 个动作 / {{ commandTotal }} 条 Linux 命令，按分类汇总在这里；点任意一条可看完整命令并执行
+      </div>
+      <div v-if="!connected" class="banner banner-err">
+        未连接服务器：请先在「账号管理」里连接；若连不上，说明 Linux 端 netmon 没在运行
+        （在服务器上执行：systemctl status netmon / sudo ss -ltnp | grep :8080）
+      </div>
+      <div v-else-if="!actionsSupported" class="banner banner-err">
+        当前服务端{{ now.version ? "（V" + now.version + "）" : "未上报版本" }}不支持运维动作
+        <template v-if="!now.version || compareVersion(now.version, '0.8.0') < 0">：请把 Linux 端 netmon 更新到 V0.8.0 及以上</template>
+        <template v-else>：该版本未包含该能力，请确认部署的是本项目最新 netmon</template>
+      </div>
+      <div class="row">
+        <button class="btn small" type="button" :disabled="!actionsSupported" @click="reloadCommands">刷新指令</button>
+        <button class="btn small" type="button" :disabled="!commandTotal" @click="copyAllCommands">复制全部指令</button>
+      </div>
+
+      <section v-for="g in actionGroups" :key="g.key" class="cmd-group">
+        <div class="cmd-group-head">
+          <span class="cmd-group-title">{{ g.icon }} {{ g.label }}</span>
+          <span class="muted small">{{ g.items.length }} 个动作</span>
+        </div>
+        <div class="muted small">{{ g.hint }}</div>
+        <div v-if="!g.items.length" class="muted empty">该分类暂无可用动作</div>
+        <button v-for="a in g.items" :key="a.id" class="action-item" type="button" @click="openAction(a)">
+          <span class="action-row">
+            <span class="action-title">{{ a.title }}</span>
+            <span v-if="a.danger" class="danger-tag">需确认</span>
+          </span>
+          <span class="muted small">{{ a.description }}</span>
+          <code v-for="(c, ci) in commandTemplates(a)" :key="a.id + '-cmd-' + ci" class="cmd-line">$ {{ c }}</code>
+        </button>
+
+        <div v-if="g.key === 'files' && actionsSupported" class="file-browser">
+          <div class="muted section-title">文件浏览（白名单目录）</div>
+          <div class="row">
+            <input v-model="filePath" class="file-path" placeholder="/var/log" @keyup.enter="loadFiles" />
+            <button class="btn small" type="button" @click="loadFiles">打开</button>
+            <button class="btn small" type="button" @click="fileUp" :disabled="!parentPathOf(filePath)">上级</button>
+          </div>
+          <div v-if="fileError" class="banner banner-err">{{ fileError }}</div>
+          <div v-if="fileLoading" class="muted small">加载中…</div>
+          <div v-for="f in fileEntries" :key="f.path" class="file-row">
+            <button class="file-name" type="button" @click="openEntry(f)">
+              {{ entryIcon(f) }} {{ f.name }}
+            </button>
+            <span class="muted small">{{ f.is_dir ? "-" : fileSizeText(f.size) }}</span>
+            <button v-if="!f.is_dir" class="btn small" type="button" @click="downloadFile(f)">下载</button>
+            <button
+              v-if="!f.is_dir && downloadedFiles[f.path]"
+              class="btn small"
+              type="button"
+              @click="openDownloaded(f)"
+            >
+              打开
+            </button>
+          </div>
+          <div v-if="!fileEntries.length && !fileLoading && !fileError" class="muted empty">空目录</div>
+        </div>
+      </section>
+
+      <div class="muted section-title">最近执行</div>
+      <div v-if="!actionHistory.length" class="muted empty">暂无执行记录</div>
+      <div v-for="h in actionHistory.slice(0, 6)" :key="h.id" class="history-line">
+        <span class="muted small">{{ fmtTs(h.started_at) }}</span>
+        <span class="history-text">{{ historyText(h) }}</span>
+      </div>
+    </aside>
+
+    <aside v-else-if="nav === 'plugins'" class="side card">
+      <div class="panel-title">界面插件</div>
+      <div class="muted hint">{{ pluginHintText }}</div>
+      <div class="row">
+        <button class="btn small" type="button" :disabled="pluginsLoading" @click="loadPlugins">刷新插件</button>
+      </div>
+      <div v-if="pluginWarnings.length" class="banner banner-err">
+        <div v-for="(w, i) in pluginWarnings" :key="i">{{ w }}</div>
+      </div>
+      <div v-if="!pluginItems.length" class="muted empty">当前没有可用插件</div>
+      <div v-for="p in pluginItems" :key="p.id" class="plugin-item">
+        <label class="plugin-line">
+          <input type="checkbox" :checked="p.enabled" @change="setPluginEnabled(p.id, $event.target.checked)" />
+          <span class="plugin-name">{{ p.icon }} {{ p.title }}</span>
+        </label>
+        <div class="muted small">{{ p.available ? "可用" : p.hint }}</div>
+        <div class="row">
+          <button class="btn small" type="button" :disabled="!p.available" @click="selectedPluginId = p.id">打开面板</button>
+        </div>
+      </div>
+    </aside>
+
+    <aside v-else-if="nav === 'logs'" class="side card">
+      <div class="panel-title">连接日志与状态</div>
+      <div class="status-line">
+        <span class="dot big" :class="statusView_.cls"></span>
+        <span>{{ statusView_.text }}</span>
+      </div>
+      <div class="status-line">
+        <span class="muted">服务端版本：</span>
+        <span>{{ now.version ? "V" + now.version : "未上报（旧版本）" }}</span>
+      </div>
+      <div class="status-line">
+        <span class="muted">已启用能力：</span>
+        <span>{{ featureText }}</span>
+      </div>
+      <div v-if="filterInfo.active" class="status-line">
+        <span class="muted">采集过滤：</span>
+        <span>{{ filterInfo.text }}</span>
+      </div>
+      <div v-if="missingFeatures.length" class="banner banner-err">
+        服务端缺少：{{ missingFeatures.join("、") }}。<br />
+        用仓库里最新的 <b>netmon-linux</b> 替换服务器旧程序并重启即可启用（客户端会自动识别）。
+      </div>
+      <div class="status-line">
+        <span class="muted">内核通道：</span>
+        <span :class="ipcOk === true ? 'k-ok' : ipcOk === false ? 'k-bad' : ''">
+          {{ kernelText }}
+        </span>
+      </div>
+      <div class="muted section-title">服务端升级</div>
+      <div class="row">
+        <button class="btn small" type="button" :disabled="!connected || !upgradeEnabled" @click="openUpgrade">
+          一键升级服务端…
+        </button>
+        <span class="muted small">
+          {{ upgradeHint }}
+        </span>
+      </div>
+      <div class="logbox">
+        <div v-if="!uiLog.length" class="muted empty">暂无记录</div>
+        <div v-for="(line, i) in uiLog" :key="i" class="log-line">{{ line }}</div>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main">
+      <template v-if="connected">
+              <div v-if="firingAlerts.length" class="alert-banner card">
+        <div class="alert-title">🚨 正在触发中的告警</div>
+        <div v-for="(a, i) in firingAlerts.slice(0, 3)" :key="i" class="alert-item">
+          {{ a.rule_id }} · {{ a.series }} 当前 {{ alertValue(a) }}（阈值 {{ alertThreshold(a) }}）
+        </div>
+      </div>
+      <div class="row dash-tools">
+        <button class="btn" type="button" :disabled="capturing || !captureSupportInfo.ok" @click="startCapture">
+          {{ capturing ? captureButtonText : "抓包导出（" + CAPTURE_SECONDS_DEFAULT + " 秒 pcap）" }}
+        </button>
+        <button class="btn" type="button" :disabled="!capturePath" @click="openCaptureInWireshark">
+          用 Wireshark 打开
+        </button>
+        <span class="muted small" :class="{ warn: !captureSupportInfo.ok }">
+          {{
+            !connected
+              ? "未连接服务器（连不上时请检查 Linux 端 netmon 是否运行）"
+              : !captureSupportInfo.ok
+              ? captureSupportInfo.hint
+              : capturePath
+                ? "最近文件：" + capturePath
+                : "抓包文件会下载到本机临时目录，可用 Wireshark 分析"
+          }}
+        </span>
+      </div>
+      <div class="info-line muted">
+          <span>机器：{{ now.machine_id || "-" }}</span>
+          <span>数据源：{{ now.source || "-" }}</span>
+          <span>运行时长：{{ fmtDuration(now.uptime_s) }}</span>
+          <span>活跃流：{{ now.flows_active ?? "-" }}</span>
+          <span class="grow"></span>
+          <span>最后更新：{{ fmtTs(now.ts) }}</span>
+        </div>
+        <KpiCards :now="now" />
+        <TrafficChart :points="history" :theme="theme" :mode="chartMode" @update-mode="setChartMode" />
+        <PluginPanel v-if="selectedPlugin" :spec="selectedPlugin" :features="serverFeatures" />
+        <div class="card">
+          <div class="sess-head">
+            <span class="sess-title">会话明细</span>
+            <input v-model="sessFilter.ip" class="filter-ip" placeholder="按 IP 过滤，如 10.0" />
+            <select v-model="sessFilter.proto">
+              <option value="">全部协议</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="icmp">ICMP</option>
+            </select>
+            <button class="btn" type="button" :disabled="sessLoading" @click="loadSessions(1)">刷新</button>
+          </div>
+          <SessionTable
+            :rows="sessRows"
+            :total="sessTotal"
+            :page="sessPage"
+            :page-size="pageSize"
+            :loading="sessLoading"
+            @page="loadSessions"
+          />
+        </div>
+      </template>
+      <div v-else class="welcome card">
+        <h2>欢迎使用 MeTD</h2>
+        <p class="muted">
+          点击左侧「账号管理」填写 Linux 监控端地址（如 192.168.161.128:8080）并连接；
+          或用齿轮进入设置调整主题、背景与托盘选项。
+        </p>
+      </div>
+    </main>
+
+    <!-- 服务端升级弹窗：必须填 SHA256，二次确认后由服务端原子替换 -->
+    <div v-if="upgradeDialog.open" class="overlay" @click.self="upgradeDialog.open = false">
+      <div class="dialog card action-dialog">
+        <div class="dialog-head">
+          <span>升级服务端 <span class="danger-tag">需二次确认</span></span>
+          <button class="profile-del" type="button" @click="upgradeDialog.open = false">×</button>
+        </div>
+        <p class="muted small">
+          服务端会校验白名单地址 → 下载 → <b>SHA256 校验</b> → ELF 校验 → 备份现有程序 → 原子替换，然后重启。
+          校验不通过不会改动任何文件。SHA256 请从可信渠道获取（如构建机执行 <code>sha256sum netmon-linux</code>）。
+        </p>
+        <p v-if="upgradeLastText" class="muted small">{{ upgradeLastText }}</p>
+        <div class="field">
+          <label>新版本下载地址（必须在服务端 allowed_prefixes 白名单内）</label>
+          <input v-model="upgradeDialog.url" placeholder="https://your-server/dl/netmon-linux" />
+        </div>
+        <div class="field">
+          <label>SHA256（64 位十六进制）</label>
+          <input v-model="upgradeDialog.sha" placeholder="例如 3f2a...（共 64 位）" />
+        </div>
+        <div class="switch-row">
+          <span>替换后自动重启服务</span>
+          <button class="switch" :class="{ on: upgradeDialog.restart }" type="button" @click="upgradeDialog.restart = !upgradeDialog.restart"></button>
+        </div>
+        <div v-if="upgradeDialog.error" class="banner banner-err">{{ upgradeDialog.error }}</div>
+        <div v-if="upgradeDialog.running" class="banner banner-busy">正在升级（下载 + 校验 + 替换）…</div>
+        <template v-if="upgradeDialog.result">
+          <div class="muted section-title">升级结果</div>
+          <pre class="out-box">{{ upgradeResultView }}</pre>
+        </template>
+        <div class="row">
+          <button class="btn primary grow" type="button" :disabled="upgradeDialog.running" @click="runUpgrade">
+            {{ upgradeDialog.running ? "升级中…" : "确认升级" }}
+          </button>
+          <button class="btn" type="button" @click="upgradeDialog.open = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 运维动作弹窗：执行前先展示将在 Linux 上执行的命令 -->
+    <div v-if="actionDialog.open" class="overlay" @click.self="closeActionDialog">
+      <div class="dialog card action-dialog">
+        <div class="dialog-head">
+          <span>
+            {{ actionDialog.action.title }}
+            <span v-if="actionDialog.action.danger" class="danger-tag">危险操作</span>
+          </span>
+          <button class="profile-del" type="button" @click="closeActionDialog">×</button>
+        </div>
+        <p class="muted small">{{ actionDialog.action.description }}</p>
+
+        <div v-for="p in actionDialog.action.params || []" :key="p.name" class="field">
+          <label>{{ p.label }}<span v-if="p.required"> *</span></label>
+          <input v-model="actionDialog.params[p.name]" :placeholder="p.placeholder" @keyup.enter="runAction" />
+          <span v-if="p.hint" class="muted small">{{ p.hint }}</span>
+        </div>
+
+        <div class="muted section-title">将在 Linux 上执行的命令</div>
+        <pre class="cmd-box">{{ actionPreview }}</pre>
+        <div class="row">
+          <button class="btn small" type="button" @click="copyActionCommands">复制命令</button>
+          <span v-if="actionDialog.action.danger" class="muted small warn">
+            该操作会修改系统状态，请确认命令无误后再执行
+          </span>
+        </div>
+
+        <div v-if="actionDialog.error" class="banner banner-err">{{ actionDialog.error }}</div>
+        <div v-if="actionDialog.running" class="banner banner-busy">正在 Linux 上执行…</div>
+
+        <template v-if="actionDialog.result">
+          <div class="muted section-title">执行结果 · {{ actionResultSummary(actionDialog.result) }}</div>
+          <pre class="out-box">{{ actionDialog.output }}</pre>
+        </template>
+
+        <div class="row">
+          <button class="btn primary grow" type="button" :disabled="actionDialog.running" @click="runAction">
+            {{ actionDialog.running ? "执行中…" : actionDialog.action.danger ? "确认执行" : "执行" }}
+          </button>
+          <button class="btn" type="button" @click="closeActionDialog">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div v-if="settingsOpen" class="overlay" @click.self="settingsOpen = false">
+      <div class="dialog card">
+        <div class="dialog-head">
+          <span>设置</span>
+          <button class="profile-del" type="button" @click="settingsOpen = false">×</button>
+        </div>
+
+        <div class="muted section-title">外观</div>
+        <div class="seg">
+          <button class="seg-btn" :class="{ active: theme === 'dark' }" type="button" @click="setTheme('dark')">🌙 夜间模式</button>
+          <button class="seg-btn" :class="{ active: theme === 'light' }" type="button" @click="setTheme('light')">☀ 明亮模式</button>
+        </div>
+        <div class="field">
+          <label>面板背景透明度：{{ Math.round(settings.opacity * 100) }}%（55% ~ 100%）</label>
+          <input v-model.number="settings.opacity" type="range" min="0.55" max="1" step="0.05" @input="applyView" />
+        </div>
+        <div class="field">
+          <label>自定义背景图片</label>
+          <div class="row">
+            <button class="btn" type="button" @click="pickBackground">选择图片</button>
+            <button class="btn" type="button" @click="clearBackground">恢复默认</button>
+          </div>
+          <input ref="bgInput" type="file" accept="image/*" class="hidden" @change="onBgFile" />
+        </div>
+
+        <div class="muted section-title">启动与托盘</div>
+        <div class="switch-row">
+          <span>开机自启动</span>
+          <button class="switch" :class="{ on: settings.autostart }" type="button" @click="toggleAutostart"></button>
+        </div>
+        <div class="switch-row">
+          <span>启动时最小化到托盘</span>
+          <button class="switch" :class="{ on: settings.startMinimized }" type="button" @click="settings.startMinimized = !settings.startMinimized; persistSettings()"></button>
+        </div>
+        <div class="switch-row">
+          <span>关闭窗口时最小化到托盘</span>
+          <button class="switch" :class="{ on: settings.closeToTray }" type="button" @click="settings.closeToTray = !settings.closeToTray; persistSettings()"></button>
+        </div>
+        <p class="muted small">托盘常驻：右键托盘图标可"显示 MeTD / 退出"；左键单击切换显示。</p>
+      </div>
+    </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
+import KpiCards from "./components/KpiCards.vue";
+import TrafficChart from "./components/TrafficChart.vue";
+import SessionTable from "./components/SessionTable.vue";
+import PluginPanel from "./components/PluginPanel.vue";
+import {
+  apiGet,
+  apiPost,
+  apiPostJson,
+  openLocalFile,
+  probeHosts,
+  saveServerFile,
+  startStream,
+  stopStream,
+  autostartDisable,
+  autostartEnable,
+  autostartIsEnabled,
+  clearConnection,
+  errText,
+  localEngineStart,
+  localEngineStatus,
+  localEngineStop,
+  openInWireshark,
+  ping,
+  saveCapture,
+  setConnection,
+} from "./api.js";
+import { fmtDuration, fmtNum, fmtPps, fmtRate, fmtTs, normalizeBaseUrl } from "./format.js";
+import {
+  TABS_KEY,
+  closeTabById,
+  createTab,
+  newTabId,
+  nextActiveId,
+  normalizeTabs,
+} from "./tabs.js";
+import {
+  PROFILE_STORE_KEY,
+  lastUsedText,
+  normalizeProfiles,
+  profileName,
+  removeProfile,
+  upsertProfile,
+} from "./profiles.js";
+import { loadSettings, saveSettings } from "./settings.js";
+import {
+  MODE_STORE_KEY,
+  SOURCE_MODES,
+  checkStartLocalAnalysis,
+  loadModePref,
+  modeHint,
+  modeLabel,
+  modeSupport,
+  normalizeMode,
+  verifyLocalEngine,
+} from "./localsource.js";
+import { connectMessage, statusView } from "./status.js";
+import { chartModeLabel, normalizeChartMode } from "./chartmode.js";
+import { captureSupport, hasFeature } from "./capability.js";
+import { filterSummary } from "./filterinfo.js";
+import { loadDisabled, pluginList, saveDisabled, togglePluginDisabled } from "./pluginregistry.js";
+import { lastUpgradeSummary, serverUpgradeEnabled, upgradeDisabledHint, upgradeResultText, validateUpgradeInput } from "./upgrade.js";
+import {
+  COMMANDS_NAV,
+  actionResultSummary,
+  commandTemplates,
+  commandsDigest,
+  countActions,
+  countCommands,
+  formatActionResult,
+  groupActions,
+  historyText,
+  previewCommands,
+  validateActionParams,
+} from "./actions.js";
+import { canOpenLocalFile, entryIcon, fileExt, fileSizeText, joinPath, parentPath, sortEntries } from "./files.js";
+import { featureBadges, fleetSummary, hostMetrics, hostStatus, hostVersion, sortHosts } from "./hosts.js";
+import { TOPN_RANGES, barWidth, entryLabel, entrySummary, panelTitle } from "./topn.js";
+import { LIVE_MAX_POINTS, mergeLiveSample } from "./livechart.js";
+import {
+  CAPTURE_SECONDS_DEFAULT,
+  captureDoneText,
+  captureErrorText,
+  captureProgressText,
+  clampCaptureSeconds,
+} from "./capture.js";
+import {
+  cancelAttempt,
+  cancelNotice,
+  connectButtonLabel,
+  isCurrentAttempt,
+  newAttemptToken,
+  startAttempt,
+} from "./connect.js";
+
+const STORE_KEY = PROFILE_STORE_KEY;
+const CHART_KEY = "netmon.chartMode";
+const pageSize = 20;
+const HISTORY_STEP = 10; // 历史曲线分桶粒度（秒），越小曲线越细
+const appWindow = getCurrentWindow();
+
+const nav = ref("accounts");
+const navItems = [
+  { key: "dash", icon: "📊", label: "仪表盘" },
+  { key: "accounts", icon: "👤", label: "账号管理" },
+  { key: "hosts", icon: "🖥", label: "主机" },
+  { key: "topn", icon: "📈", label: "排行" },
+  { key: COMMANDS_NAV.key, icon: COMMANDS_NAV.icon, label: COMMANDS_NAV.label },
+  { key: "plugins", icon: "🧩", label: "插件" },
+  { key: "logs", icon: "📋", label: "连接日志" },
+];
+
+const settings = reactive(loadSettings(localStorage));
+const theme = ref(settings.theme === "light" ? "light" : "dark");
+const chartMode = ref(loadChartMode());
+const settingsOpen = ref(false);
+const bgInput = ref(null);
+const tabs = ref(loadTabs());
+const activeId = ref(tabs.value[0].id);
+
+const form = reactive({ name: "", base: "", token: "" });
+// ---------- 数据来源（远程 Linux / 本机 Windows 实时 / 离线 pcap 三选一） ----------
+// 远程：沿用原有连接流程；本机实时抓包：本版本尚未实现（采集端故意不声明 source.local）；
+// 离线：先启动本机 netmon.exe 回放 pcap，再按原有流程连到它分配的 127.0.0.1 端口。
+const savedSource = loadModePref(loadSourcePref());
+const sourceMode = ref(savedSource.mode);
+const sourcePref = reactive({ pcapPath: savedSource.pcapPath });
+// 本机引擎信息：{ base, pid, data_dir, mode }
+const localEngine = ref(null);
+const localEngineBusy = ref(false);
+const localEngineError = ref("");
+// 当前来源在当前环境是否可用（now.os 为采集端上报的运行系统）
+const sourceSupport = computed(() => modeSupport(sourceMode.value, now, now.os));
+// 优先显示不可用原因，其次显示来源本身的说明。
+// 离线模式的能力要等本机引擎起来、连上之后才知道：启动前只显示来源说明，
+// 否则会显示"未上报版本/能力"，让人误以为这个功能根本不可用。
+const sourceNotice = computed(() =>
+  // 两种本机来源（离线 pcap / 实时抓包）都要等本机引擎起来、连上之后才能判断能力，
+  // 启动前只显示来源说明——否则会显示"未上报版本/能力"，让人以为这个功能根本不可用
+  (sourceMode.value === "local" || sourceMode.value === "offline") && !localEngine.value
+    ? modeHint(sourceMode.value)
+    : sourceSupport.value.hint || modeHint(sourceMode.value),
+);
+const connectDisabled = computed(() => {
+  // 两种本机来源都要先由客户端拉起本机引擎（netmon.exe），再连它分配的 127.0.0.1 端口
+  if (sourceMode.value === "local" || sourceMode.value === "offline") return !localEngine.value;
+  return false;
+});
+// 数据目录由 Rust 侧按 %LOCALAPPDATA%\MeTD\local-data 计算并回传，启动前只做说明
+const localDataDirView = computed(() =>
+  localEngine.value && localEngine.value.data_dir
+    ? localEngine.value.data_dir
+    : "%LOCALAPPDATA%\\MeTD\\local-data（启动时自动创建）",
+);
+const profiles = ref(loadProfiles());
+const connecting = ref(false);
+const connected = ref(false);
+const showToken = ref(false);
+const uiLog = ref([]);
+const banner = reactive({ show: false, kind: "busy", text: "" });
+const now = reactive({});
+const history = ref([]);
+const sessRows = ref([]);
+const sessTotal = ref(0);
+const sessPage = ref(1);
+const sessLoading = ref(false);
+const sessFilter = reactive({ ip: "", proto: "" });
+const firingAlerts = ref([]);
+// 实时通道是否已建立
+const streamStarted = ref(false);
+// ---------- 服务端升级（对接 /api/v1/system/upgrade） ----------
+const upgradeStatus = ref(null);
+const upgradeDialog = reactive({ open: false, url: "", sha: "", restart: true, running: false, error: "", result: null });
+const upgradeEnabled = computed(() => serverUpgradeEnabled(upgradeStatus.value));
+const upgradeHint = computed(() => upgradeDisabledHint(connected.value, upgradeStatus.value, now.version));
+const upgradeLastText = computed(() => lastUpgradeSummary(upgradeStatus.value));
+const upgradeResultView = computed(() => upgradeResultText(upgradeDialog.result));
+
+async function loadUpgradeStatus() {
+  if (!connected.value) {
+    upgradeStatus.value = null;
+    return;
+  }
+  try {
+    upgradeStatus.value = await apiGet("/api/v1/system/upgrade");
+  } catch {
+    upgradeStatus.value = null;
+  }
+}
+
+function openUpgrade() {
+  upgradeDialog.open = true;
+  upgradeDialog.error = "";
+  upgradeDialog.result = null;
+  loadUpgradeStatus();
+}
+
+async function runUpgrade() {
+  const check = validateUpgradeInput(upgradeDialog.url, upgradeDialog.sha);
+  if (!check.ok) {
+    upgradeDialog.error = check.error;
+    return;
+  }
+  const url = check.url;
+  const sha = check.sha256;
+  upgradeDialog.running = true;
+  upgradeDialog.error = "";
+  upgradeDialog.result = null;
+  pushLog("开始升级服务端：" + url);
+  try {
+    const res = await withTimeout(
+      apiPostJson("/api/v1/system/upgrade", { url: url, sha256: sha, confirm: true, restart: upgradeDialog.restart }),
+      180000,
+      "服务端升级",
+    );
+    upgradeDialog.result = res;
+    setBanner("ok", "服务端已升级：" + (res && res.sha256 ? res.sha256.slice(0, 12) + "…" : ""));
+    pushLog("服务端升级成功，SHA256=" + (res && res.sha256));
+    if (res && res.restart_scheduled) pushLog("服务端即将重启，等待自动重连…");
+  } catch (e) {
+    const reason = errText(e);
+    upgradeDialog.error = reason;
+    setBanner("err", "升级失败：" + reason);
+    pushLog("升级失败：" + reason);
+  } finally {
+    upgradeDialog.running = false;
+  }
+}
+
+// ---------- 流量排行（TOP N / 协议分布） ----------
+const topnRes = ref({});
+const topnSince = ref(3600);
+const topnLoading = ref(false);
+const topnError = ref("");
+let topnTimer = null;
+
+async function loadTopN() {
+  if (!connected.value) return;
+  topnLoading.value = true;
+  topnError.value = "";
+  try {
+    topnRes.value = await apiGet("/api/v1/topn?since=" + topnSince.value + "&n=10");
+  } catch (e) {
+    topnError.value = errText(e);
+  } finally {
+    topnLoading.value = false;
+  }
+}
+
+function setTopnRange(v) {
+  topnSince.value = v;
+  loadTopN();
+}
+
+// ---------- 多机（fleet） ----------
+const hostProbes = reactive({});
+const hostProbing = ref(false);
+const hostRows = computed(() =>
+  sortHosts(profiles.value.map((p) => ({ ...p, probe: hostProbes[p.base] || null }))),
+);
+const hostSummary = computed(() => fleetSummary(hostRows.value));
+let hostTimer = null;
+
+async function probeAllHosts() {
+  if (!profiles.value.length) return;
+  hostProbing.value = true;
+  try {
+    const specs = profiles.value.map((p) => ({ name: profileName(p), base: p.base, token: p.token || "" }));
+    const res = await withTimeout(probeHosts(specs), 20000, "主机探测");
+    (res || []).forEach((r) => {
+      if (r && r.base) hostProbes[r.base] = r;
+    });
+  } catch (e) {
+    pushLog("主机探测失败：" + errText(e));
+  } finally {
+    hostProbing.value = false;
+  }
+}
+
+// 连接/删除连接后，如果主机面板正开着就重新探测一次
+watch(
+  () => profiles.value.map((p) => p.base).join(","),
+  () => {
+    if (nav.value === "hosts") probeAllHosts();
+  },
+);
+
+// 打开主机面板时探测一次，之后每 15 秒刷新
+watch(nav, (v) => {
+  if (topnTimer) {
+    clearInterval(topnTimer);
+    topnTimer = null;
+  }
+  if (v === "topn") {
+    loadTopN();
+    topnTimer = setInterval(loadTopN, 15000);
+  }
+  if (hostTimer) {
+    clearInterval(hostTimer);
+    hostTimer = null;
+  }
+  if (v === "hosts") {
+    probeAllHosts();
+    hostTimer = setInterval(probeAllHosts, 15000);
+  }
+  // 打开「Linux 指令」面板时刷新一次指令清单与最近执行
+  if (v === COMMANDS_NAV.key) {
+    reloadCommands();
+  }
+});
+// ---------- 运维动作（白名单动作） ----------
+const actions = ref([]);
+const actionHistory = ref([]);
+const actionDialog = reactive({
+  open: false,
+  action: {},
+  params: {},
+  running: false,
+  result: null,
+  error: "",
+  output: "",
+});
+const actionsSupported = computed(() => hasFeature(now, "actions.run"));
+// 服务端能力展示：让"某功能没启用"一眼看出是版本问题而不是 bug
+const featureText = computed(() =>
+  Array.isArray(now.features) && now.features.length ? now.features.join(" / ") : "未上报（旧版本）",
+);
+// 采集过滤（服务端 capture.filter）：让"流量不全"一眼看出是过滤导致，而不是采集故障
+const filterInfo = computed(() => filterSummary(now));
+const missingFeatures = computed(() => {
+  if (!connected.value) return [];
+  if (!Array.isArray(now.features)) return ["版本/能力上报（V0.7.0+）"];
+  const names = { "capture.dump": "抓包导出", "actions.run": "运维动作", alerts: "告警事件" };
+  return Object.entries(names)
+    .filter(([key]) => !now.features.includes(key))
+    .map(([, label]) => label);
+});
+// 左侧「Linux 指令」面板：所有分类的指令集中在同一个面板里展示
+const actionGroups = computed(() => groupActions(actions.value));
+const actionTotal = computed(() => countActions(actionGroups.value));
+const commandTotal = computed(() => countCommands(actionGroups.value));
+// ---------- 界面插件框架（服务端下发声明式清单，客户端渲染） ----------
+const plugins = ref([]);
+const pluginWarnings = ref([]);
+const pluginsLoading = ref(false);
+const pluginsEnabled = ref(false);
+const pluginServerHint = ref("");
+const pluginDisabled = ref(loadDisabled(localStorage));
+const selectedPluginId = ref("");
+const serverFeatures = computed(() => (Array.isArray(now.features) ? now.features : []));
+const pluginServerSupports = computed(() => hasFeature(now, "plugins"));
+const pluginItems = computed(() =>
+  pluginList(plugins.value, { features: serverFeatures.value, disabled: pluginDisabled.value }),
+);
+const selectedPlugin = computed(() => pluginItems.value.find((p) => p.id === selectedPluginId.value) || null);
+const pluginHintText = computed(() => {
+  if (!connected.value) return "连接服务器后加载插件清单";
+  if (!pluginServerSupports.value) return "服务端未上报 plugins 能力：把 Linux 端 netmon 升级到 V0.19.0 及以上";
+  if (pluginServerHint.value) return pluginServerHint.value;
+  if (!pluginsEnabled.value) return "服务端未配置 [plugins] dir（见使用指南「界面插件」）";
+  return pluginItems.value.length ? "插件由服务端下发；取消勾选可临时隐藏，勾选状态记在本机" : "服务端插件目录里还没有 *.json 清单";
+});
+
+async function loadPlugins() {
+  if (!connected.value) return;
+  pluginsLoading.value = true;
+  try {
+    const res = await apiGet("/api/v1/plugins");
+    plugins.value = Array.isArray(res.items) ? res.items : [];
+    pluginWarnings.value = Array.isArray(res.warnings) ? res.warnings : [];
+    pluginsEnabled.value = Boolean(res.enabled);
+    pluginServerHint.value = typeof res.hint === "string" ? res.hint : "";
+  } catch (e) {
+    plugins.value = [];
+    pluginWarnings.value = [];
+    pluginsEnabled.value = false;
+    pluginServerHint.value = "读取插件清单失败：" + errText(e);
+  } finally {
+    pluginsLoading.value = false;
+  }
+}
+
+function setPluginEnabled(id, enabled) {
+  pluginDisabled.value = togglePluginDisabled(pluginDisabled.value, id, enabled);
+  saveDisabled(localStorage, pluginDisabled.value);
+  if (!enabled && selectedPluginId.value === id) selectedPluginId.value = "";
+}
+
+// ---------- 文件通道（浏览 + 下载 Linux 文件） ----------
+const filePath = ref("/var/log");
+const fileEntries = ref([]);
+const fileLoading = ref(false);
+const fileError = ref("");
+// 服务端文件路径 -> 本机已保存路径。只有下载过的文件才出现「打开」按钮，
+// 且**下载不再自动打开**（见 openDownloaded 的说明）。
+const downloadedFiles = ref({});
+const parentPathOf = (p) => parentPath(p);
+
+async function loadFiles() {
+  if (!connected.value) return;
+  fileLoading.value = true;
+  fileError.value = "";
+  try {
+    const data = await apiGet("/api/v1/files?path=" + encodeURIComponent(filePath.value));
+    filePath.value = (data && data.path) || filePath.value;
+    fileEntries.value = sortEntries((data && data.items) || []);
+  } catch (e) {
+    fileEntries.value = [];
+    fileError.value = errText(e);
+  } finally {
+    fileLoading.value = false;
+  }
+}
+
+function openEntry(f) {
+  if (!f || !f.is_dir) return;
+  filePath.value = f.path;
+  loadFiles();
+}
+
+function fileUp() {
+  const p = parentPath(filePath.value);
+  if (!p) return;
+  filePath.value = p;
+  loadFiles();
+}
+
+async function downloadFile(f) {
+  if (!f || f.is_dir) return;
+  setBanner("busy", "正在下载 " + f.name + " …");
+  pushLog("下载文件：" + f.path);
+  try {
+    const saved = await withTimeout(
+      saveServerFile("/api/v1/files/download?path=" + encodeURIComponent(f.path), f.name),
+      60000,
+      "下载文件",
+    );
+    downloadedFiles.value = { ...downloadedFiles.value, [f.path]: saved };
+    setBanner("ok", "已保存到本机：" + saved + (canOpenLocalFile(f.name) ? "（点「打开」查看）" : "（该类型不提供「打开」）"));
+    pushLog("已下载到本机：" + saved);
+  } catch (e) {
+    const reason = errText(e);
+    setBanner("err", "下载失败：" + reason);
+    pushLog("下载失败：" + reason);
+  }
+}
+
+// 打开已下载的文件：必须由用户显式点击，且可执行类扩展名一律拒绝。
+//
+// 这里刻意**不再下载完就自动调用 openLocalFile**：服务端决定文件名、扩展名会被完整保留，
+// 而 openLocalFile 走 `cmd /C start`（交给系统默认程序 = 可能直接执行）。自动打开意味着
+// 一台被伪冒/被攻陷的采集端只要把文件名起成 report.pdf.exe，用户点一次「下载」就完成代码执行。
+function openDownloaded(f) {
+  const saved = downloadedFiles.value[f.path];
+  if (!saved) return;
+  const ext = fileExt(f.name);
+  if (!canOpenLocalFile(f.name)) {
+    const reason = "为安全起见不打开可执行/脚本类文件（." + (ext || "?") + "）：" + saved;
+    setBanner("err", reason);
+    pushLog("已拒绝打开：" + saved);
+    return;
+  }
+  if (!window.confirm("用系统默认程序打开本机文件？\n" + saved + "\n\n请确认这是你期望打开的文件。")) {
+    return;
+  }
+  openLocalFile(saved)
+    .then((msg) => {
+      setBanner("ok", msg);
+      pushLog(msg);
+    })
+    .catch((e) => {
+      const reason = errText(e);
+      setBanner("err", "打开失败：" + reason);
+      pushLog("打开失败：" + reason);
+    });
+}
+const actionPreview = computed(() => previewCommands(actionDialog.action, actionDialog.params).join("\n"));
+// 连接取消令牌：取消后本次连接流程的所有后续结果都会被忽略
+const attempt = newAttemptToken();
+// 抓包导出（Wireshark）状态
+const capturing = ref(false);
+const captureStatus = ref(null);
+const capturePath = ref("");
+// 服务端能力：旧版 Linux 端没有抓包接口时提前提示，而不是等报 404
+const captureSupportInfo = computed(() => captureSupport(now));
+const captureButtonText = computed(() =>
+  captureStatus.value && captureStatus.value.active
+    ? captureProgressText(captureStatus.value, CAPTURE_SECONDS_DEFAULT)
+    : "抓包中…",
+);
+
+const toast = reactive({ show: false, type: "ok", text: "" });
+let toastTimer = null;
+let nowTimer = null;
+let historyTimer = null;
+let sessionTimer = null;
+let alertTimer = null;
+let snapshotTimer = null;
+let failCount = 0;
+
+const statusView_ = computed(() =>
+  statusView(connected.value, form.name || form.base, banner.kind === "err"),
+);
+const ipcOk = ref(null);
+const kernelText = computed(() =>
+  ipcOk.value === true ? "正常" : ipcOk.value === false ? "异常" : "检测中",
+);
+
+// 简易版本比较（用于提示"是否需要升级服务端"）
+function compareVersion(a, b) {
+  const pa = String(a || "0").split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || "0").split(".").map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function loadChartMode() {
+  try {
+    return normalizeChartMode(localStorage.getItem(CHART_KEY));
+  } catch {
+    return "line";
+  }
+}
+// 切换历史曲线样式（折线 / 面积 / 柱状），选择结果本地记忆
+function setChartMode(mode) {
+  const m = normalizeChartMode(mode);
+  if (m === chartMode.value) return;
+  chartMode.value = m;
+  try {
+    localStorage.setItem(CHART_KEY, m);
+  } catch {
+    // 忽略存储失败
+  }
+  pushLog("图表切换：" + chartModeLabel(m));
+}
+function loadProfiles() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return normalizeProfiles(raw ? JSON.parse(raw) : []);
+  } catch {
+    return [];
+  }
+}
+function persistProfiles() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(profiles.value));
+}
+function persistSettings() {
+  saveSettings(localStorage, { ...settings });
+}
+
+function applyView() {
+  document.documentElement.style.setProperty("--alpha", String(settings.opacity));
+  if (settings.background) {
+    document.documentElement.classList.add("has-bg");
+    document.documentElement.style.setProperty("--bg-img", `url("${settings.background}")`);
+  } else {
+    document.documentElement.classList.remove("has-bg");
+    document.documentElement.style.removeProperty("--bg-img");
+  }
+  persistSettings();
+}
+
+function setTheme(t) {
+  theme.value = t === "light" ? "light" : "dark";
+  settings.theme = theme.value;
+  document.documentElement.setAttribute("data-theme", theme.value);
+  persistSettings();
+  pushLog("主题切换：" + (theme.value === "light" ? "明亮模式" : "夜间模式"));
+}
+
+function pickBackground() {
+  if (bgInput.value) bgInput.value.click();
+}
+async function onBgFile(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const dataUrl = await downscaleImage(file, 1920, 0.82);
+    settings.background = dataUrl;
+    applyView();
+    pushLog("已设置自定义背景图片");
+  } catch (err) {
+    pushLog("背景图片处理失败：" + errText(err));
+  }
+}
+function clearBackground() {
+  settings.background = "";
+  applyView();
+  pushLog("已恢复默认背景");
+}
+function downscaleImage(file, maxWidth, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片读取失败"));
+    };
+    img.src = url;
+  });
+}
+
+async function toggleAutostart() {
+  try {
+    if (settings.autostart) {
+      await autostartDisable();
+      settings.autostart = false;
+    } else {
+      await autostartEnable();
+      settings.autostart = true;
+    }
+    persistSettings();
+    pushLog(settings.autostart ? "已开启开机自启动" : "已关闭开机自启动");
+  } catch (err) {
+    pushLog("开机自启动设置失败：" + errText(err));
+  }
+}
+
+function notify(msg) {
+  if (!msg) return;
+  toast.type = msg.type || "err";
+  toast.text = msg.text || "";
+  toast.show = true;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.show = false;
+  }, 4000);
+}
+function pushLog(msg) {
+  const t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  uiLog.value.push(`${t} ${msg}`);
+  if (uiLog.value.length > 80) uiLog.value.shift();
+}
+function setBanner(kind, text) {
+  banner.kind = kind;
+  banner.text = text;
+  banner.show = text !== "";
+}
+
+function loadTabs() {
+  try {
+    const raw = localStorage.getItem(TABS_KEY);
+    return normalizeTabs(raw ? JSON.parse(raw) : []);
+  } catch {
+    return normalizeTabs([]);
+  }
+}
+function persistTabs() {
+  try {
+    localStorage.setItem(TABS_KEY, JSON.stringify(tabs.value));
+  } catch {
+    // 忽略存储失败
+  }
+}
+function activeTab() {
+  return tabs.value.find((t) => t.id === activeId.value) || tabs.value[0];
+}
+// 把当前界面状态写回当前标签页，便于切回时还原
+function saveCurrentTab() {
+  const t = activeTab();
+  if (!t) return;
+  t.name = form.name;
+  t.base = form.base;
+  t.token = form.token;
+  t.title = form.name || t.title || "工作区";
+  t.snapshot = {
+    now: { ...now },
+    history: [...history.value],
+    sessions: [...sessRows.value],
+    total: sessTotal.value,
+    page: sessPage.value,
+    connected: connected.value,
+    logs: [...uiLog.value],
+    banner: { ...banner },
+    firing: [...firingAlerts.value],
+  };
+}
+// 把标签页快照还原到界面
+function applyTabSnapshot(t) {
+  form.name = t.name || "";
+  form.base = t.base || "";
+  form.token = t.token || "";
+  const s = t.snapshot || {};
+  Object.keys(now).forEach((k) => delete now[k]);
+  Object.assign(now, s.now || {});
+  history.value = Array.isArray(s.history) ? [...s.history] : [];
+  sessRows.value = Array.isArray(s.sessions) ? [...s.sessions] : [];
+  sessTotal.value = s.total || 0;
+  sessPage.value = s.page || 1;
+  uiLog.value = Array.isArray(s.logs) ? [...s.logs] : [];
+  firingAlerts.value = Array.isArray(s.firing) ? [...s.firing] : [];
+  Object.assign(banner, { show: false, kind: "busy", text: "" }, s.banner || {});
+  connected.value = Boolean(s.connected);
+}
+function createTabUI() {
+  saveCurrentTab();
+  const t = createTab(newTabId(), "工作区 " + (tabs.value.length + 1));
+  tabs.value.push(t);
+  activeId.value = t.id;
+  applyTabSnapshot(t);
+  persistTabs();
+  stopTimers();
+  nav.value = "accounts";
+  pushLog("已新建工作区页面：" + t.title);
+}
+async function switchTab(id) {
+  if (id === activeId.value) return;
+  saveCurrentTab();
+  activeId.value = id;
+  const t = activeTab();
+  applyTabSnapshot(t);
+  stopTimers();
+  teardownStream();
+  if (t.base) {
+    pushLog(`切换到 ${t.title}（${t.base}），正在重连恢复数据…`);
+    await connect();
+  } else {
+    nav.value = "accounts";
+  }
+  persistTabs();
+}
+function closeTabUI(id) {
+  if (tabs.value.length <= 1) {
+    pushLog("至少保留一个工作区页面");
+    return;
+  }
+  const list = closeTabById(tabs.value, id);
+  const next = nextActiveId(list, id, activeId.value);
+  tabs.value = list;
+  if (next !== activeId.value) {
+    activeId.value = next;
+    applyTabSnapshot(activeTab());
+    stopTimers();
+  }
+  persistTabs();
+  pushLog("已关闭工作区页面");
+}
+
+// ---------- 数据来源：持久化、切换与本机引擎启停 ----------
+function loadSourcePref() {
+  try {
+    const raw = localStorage.getItem(MODE_STORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    // 存储被禁用或内容损坏：按默认的远程来源处理
+    return null;
+  }
+}
+function persistSourcePref() {
+  try {
+    localStorage.setItem(
+      MODE_STORE_KEY,
+      JSON.stringify({ mode: sourceMode.value, pcapPath: sourcePref.pcapPath }),
+    );
+  } catch {
+    // 忽略存储失败
+  }
+}
+// 清空来自旧来源的时序数据：两套来源的数字（尤其是离线文件的"当前"值）不能混在同一张图上
+function clearDataSet() {
+  Object.keys(now).forEach((k) => delete now[k]);
+  history.value = [];
+  sessRows.value = [];
+  sessTotal.value = 0;
+  firingAlerts.value = [];
+  resetCaptureState();
+}
+// 切换数据来源：断开旧连接、停掉旧的数据集与本机引擎
+async function setSourceMode(mode) {
+  const next = normalizeMode(mode);
+  if (next === sourceMode.value) return;
+  sourceMode.value = next;
+  localEngineError.value = "";
+  if (connected.value) await disconnect();
+  clearDataSet();
+  if (next !== "offline") await stopLocalEngineSilently();
+  // 记住上次用过的 pcap 路径：切回来时不必重新选（用户仍可在输入框里改）
+  persistSourcePref();
+  pushLog(`数据来源切换为：${modeLabel(next)}`);
+  const hint = modeHint(next);
+  if (hint) pushLog(hint);
+  if (!sourceSupport.value.ok) pushLog(sourceSupport.value.hint);
+}
+// 把 pcap 文件拖进窗口即可填入路径（未安装 dialog 插件时的取路径方式之一）
+async function onDropPaths(paths) {
+  if (sourceMode.value !== "offline") return;
+  const first = Array.isArray(paths) ? paths.find((p) => typeof p === "string" && p.trim()) : "";
+  if (!first) return;
+  sourcePref.pcapPath = first;
+  persistSourcePref();
+  pushLog("已填入 pcap 文件：" + first);
+}
+// 启动本机 netmon.exe 回放 pcap；返回的 base 直接交给现有连接流程
+async function startLocalAnalysis() {
+  const mode = sourceMode.value;
+  if (mode !== "offline" && mode !== "local") return;
+  // 只校验本地入参（离线模式要 pcap 路径）：本机引擎的能力要等它起来、连上之后才知道。
+  // 若在启动前就用采集端上报的 features 拦，首次使用时 `now` 还是空的，会永远点不动。
+  const gate = checkStartLocalAnalysis({ mode, pcapPath: sourcePref.pcapPath });
+  if (!gate.ok) {
+    localEngineError.value = gate.reason;
+    setBanner("err", gate.reason);
+    return;
+  }
+  const pcap = String(sourcePref.pcapPath || "").trim();
+  localEngineBusy.value = true;
+  localEngineError.value = "";
+  setBanner("busy", "正在启动本机分析引擎（netmon.exe）…");
+  pushLog("调用内核：local_engine_start（" + mode + (mode === "offline" ? "，" + pcap : "") + "）");
+  try {
+    const info = await withTimeout(localEngineStart(mode, pcap), 30000, "启动本机实时引擎");
+    localEngine.value = info || null;
+    if (mode === "offline") {
+      sourcePref.pcapPath = pcap;
+      persistSourcePref();
+    }
+    form.base = (info && info.base) || "";
+    form.token = "";
+    pushLog(`本机引擎已启动：${info.base}（PID ${info.pid}，数据目录 ${info.data_dir}）`);
+    setBanner("ok", "本机引擎已启动，正在连接…");
+    await connect();
+    if (mode === "local") {
+      // 实时抓包必须确认引擎拿到了管理员权限：没权限时它会正常启动但抓不到任何包，
+      // 引擎只在探测到权限时才声明 source.local，这里据此给出能照着做的提示。
+      const check = verifyLocalEngine(now, now.os);
+      if (!check.ok) {
+        localEngineError.value = check.hint;
+        setBanner("err", check.hint);
+        pushLog("本机实时抓包不可用：" + check.hint);
+      } else {
+        pushLog("本机实时抓包已就绪：" + (now.os || "") + " / " + (now.source || ""));
+      }
+    } else if (!sourceSupport.value.ok) {
+      // 连上之后 `now` 里才有本机 netmon 上报的版本与能力：旧版引擎可能不声明 capture.offline，
+      // 这时回放本身仍然可用，只记一条日志说明能力来源
+      pushLog("本机引擎未上报离线回放能力：" + sourceSupport.value.hint);
+    }
+  } catch (e) {
+    const reason = errText(e);
+    localEngineError.value = reason;
+    localEngine.value = null;
+    setBanner("err", "启动本机引擎失败：" + reason);
+    pushLog("启动本机引擎失败：" + reason);
+  } finally {
+    localEngineBusy.value = false;
+  }
+}
+// 停止本机分析：先断开连接，再结束本机 netmon 进程
+async function stopLocalAnalysis() {
+  localEngineBusy.value = true;
+  try {
+    if (connected.value) await disconnect();
+    const stopped = await localEngineStop();
+    localEngine.value = null;
+    localEngineError.value = "";
+    form.base = "";
+    setBanner("ok", stopped ? "本机引擎已停止" : "本机引擎本来就未运行");
+    pushLog(stopped ? "本机引擎已停止，netmon 进程已退出" : "本机引擎未在运行");
+  } catch (e) {
+    const reason = errText(e);
+    localEngineError.value = reason;
+    setBanner("err", "停止本机引擎失败：" + reason);
+    pushLog("停止本机引擎失败：" + reason);
+  } finally {
+    localEngineBusy.value = false;
+  }
+}
+// 切换来源时静默收尾，避免弹一堆提示
+async function stopLocalEngineSilently() {
+  if (!localEngine.value) return;
+  try {
+    await localEngineStop();
+  } catch {
+    // 忽略收尾失败
+  }
+  localEngine.value = null;
+}
+// 界面重开时恢复本机引擎状态（进程可能还活着）
+async function refreshLocalEngineStatus() {
+  try {
+    const info = await localEngineStatus();
+    localEngine.value = info || null;
+    if (info && info.base && !connected.value) {
+      form.base = info.base;
+      form.token = "";
+    }
+  } catch {
+    // 状态查询失败不打断启动流程
+  }
+}
+
+function saveProfile() {
+  const norm = normalizeBaseUrl(form.base);
+  if (!norm.ok) {
+    setBanner("err", norm.error);
+    return;
+  }
+  const item = {
+    name: form.name.trim() || norm.url,
+    base: norm.url,
+    token: form.token || "",
+    mode: sourceMode.value,
+    lastUsed: Date.now(),
+  };
+  profiles.value = upsertProfile(profiles.value, item);
+  persistProfiles();
+  setBanner("ok", `已保存连接：${profileName(item)}`);
+  pushLog(`已保存连接：${profileName(item)}`);
+}
+// 连接成功后自动记入账号管理：同一个 IP 只保留一条，并刷新「最近连接」时间
+function rememberConnection(base) {
+  const item = { name: form.name.trim(), base, token: form.token || "", mode: sourceMode.value, lastUsed: Date.now() };
+  profiles.value = upsertProfile(profiles.value, item);
+  persistProfiles();
+  pushLog("已记入账号管理：" + profileName(item));
+}
+function useProfile(p) {
+  form.name = p.name || p.base || "";
+  form.base = p.base;
+  form.token = p.token || "";
+  // 记住这条连接上次用的数据来源
+  sourceMode.value = normalizeMode(p.mode);
+  persistSourcePref();
+  setBanner("ok", `已载入连接：${profileName(p)}（编辑中）`);
+}
+async function switchProfile(p) {
+  useProfile(p);
+  if (connected.value) await disconnect();
+  pushLog(`切换连接：${p.name} → ${p.base}`);
+  await connect();
+}
+function deleteProfile(base) {
+  profiles.value = removeProfile(profiles.value, base);
+  persistProfiles();
+  pushLog(`已删除连接：${base}`);
+}
+
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  // 无论成功、失败还是超时都清掉定时器，否则每次调用都会在事件循环里留下一个悬挂的
+  // setTimeout（界面长时间开着会不断累积）。
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      timer = null;
+      reject(new Error(`${label}超时（${Math.round(ms / 1000)} 秒无响应）`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  });
+}
+
+async function connect() {
+  pushLog("点击连接");
+  // 先无条件停掉旧流：setupStream() 开头是 `if (streamStarted.value) return`，
+  // 若旧流还在跑（换服务器 / 换标签页 / 重连），Rust 侧那条无限 loop 任务会继续持有
+  // 上一个 base+token 把它的 metd-snapshot 写进当前界面 —— 用户会看到「B 的界面 + A 的实时数据」，
+  // 而且 A 的令牌还在 3 秒退避下被反复重连。
+  await teardownStream();
+  const norm = normalizeBaseUrl(form.base);
+  if (!norm.ok) {
+    setBanner("err", norm.error);
+    pushLog("校验失败：" + norm.error);
+    return;
+  }
+  const seq = startAttempt(attempt);
+  const label = form.name || norm.url;
+  connecting.value = true;
+  setBanner("busy", "正在连接 " + label + " …（可点「取消连接」中断）");
+  pushLog("地址校验通过：" + norm.url);
+  notify({ type: "ok", text: "正在连接 " + label + " …" });
+  try {
+    pushLog("调用内核：set_connection");
+    await withTimeout(setConnection(norm.url, form.token), 10000, "初始化连接");
+    // 即便超时，内核里的 set_connection 其实可能已经成功写入连接信息；若本次尝试已被
+    // 取消/被新的尝试取代，就不能继续把它当成「已连上」（否则界面与内核状态会说谎）。
+    if (!isCurrentAttempt(attempt, seq)) return;
+    pushLog("内核 set_connection 完成");
+    pushLog("请求实时数据 /api/v1/traffic/now");
+    await withTimeout(apiGet("/api/v1/traffic/now"), 15000, "请求实时数据");
+    if (!isCurrentAttempt(attempt, seq)) return;
+    pushLog("实时数据请求成功");
+    connected.value = true;
+    failCount = 0;
+    rememberConnection(norm.url);
+    setBanner("ok", "已连接：" + label);
+    const t = activeTab();
+    if (t) {
+      t.title = form.name || t.title;
+      t.name = form.name;
+      t.base = norm.url;
+      t.token = form.token;
+    }
+    notify(connectMessage("ok", label));
+    startTimers();
+    await Promise.all([refreshNow(), refreshHistory(), loadSessions(1), refreshAlerts(), loadActions(), loadActionHistory(), loadFiles(), loadTopN(), loadUpgradeStatus(), loadPlugins()]);
+    setupStream();
+  } catch (e) {
+    if (!isCurrentAttempt(attempt, seq)) return; // 已取消，失败结果直接丢弃
+    connected.value = false;
+    const reason = errText(e);
+    // 「初始化连接」超时时，内核里可能已经真的写入了这台服务器的连接信息；界面既然判定
+    // 这次连接失败，就把内核里的残留连接一起清掉，避免后续请求打到这台服务器上。
+    if (/初始化连接/.test(reason)) clearConnection().catch(() => {});
+    setBanner("err", "连接失败：" + reason);
+    pushLog("失败：" + reason);
+    if (/refused|拒绝|timed out|超时|error sending request/i.test(reason)) {
+      pushLog("排查建议：① 在服务器执行 systemctl status netmon 看服务是否在跑；" +
+        "② sudo ss -ltnp | grep :8080 看端口是否监听；" +
+        "③ 检查防火墙是否放行 8080");
+    } else if (/401|Unauthorized/i.test(reason)) {
+      pushLog("排查建议：服务端设置了 [api] token，请在「账号管理」里填写相同令牌");
+    }
+    notify(connectMessage("err", label, reason));
+    teardownStream();
+    stopTimers();
+  } finally {
+    if (isCurrentAttempt(attempt, seq)) connecting.value = false;
+  }
+}
+
+// 断开连接时清空抓包状态：否则「打开 Wireshark」会打开上一台服务器下载的旧 pcap，
+// 收尾轮询也会把状态请求打到刚接上的新服务器上。
+function resetCaptureState() {
+  capturing.value = false;
+  captureStatus.value = null;
+  capturePath.value = "";
+}
+
+// 连接过程中点「取消连接」：让本次尝试的序号失效，后续结果全部忽略
+function cancelConnect() {
+  if (!connecting.value) return;
+  cancelAttempt(attempt);
+  connecting.value = false;
+  resetCaptureState();
+  setBanner("idle", "已取消连接");
+  pushLog("已取消连接（已在途的请求会在后台结束，结果被忽略）");
+  notify(cancelNotice(form.name || form.base));
+  clearConnection().catch(() => {});
+}
+
+async function disconnect() {
+  await teardownStream();
+  stopTimers();
+  connected.value = false;
+  failCount = 0;
+  resetCaptureState();
+  plugins.value = [];
+  pluginWarnings.value = [];
+  pluginsEnabled.value = false;
+  pluginServerHint.value = "";
+  selectedPluginId.value = "";
+  setBanner("ok", "已断开连接");
+  pushLog("已断开连接");
+  try {
+    await clearConnection();
+  } catch {
+    // 忽略清理错误
+  }
+}
+
+// ---------------- 抓包导出（Wireshark 联动） ----------------
+// 服务端抓 N 秒 -> 下载到本机临时目录 -> 用 Wireshark 打开
+async function startCapture() {
+  if (!connected.value || capturing.value) return;
+  if (!captureSupportInfo.value.ok) {
+    setBanner("err", captureSupportInfo.value.hint);
+    pushLog(captureSupportInfo.value.hint);
+    return;
+  }
+  const seconds = clampCaptureSeconds(CAPTURE_SECONDS_DEFAULT);
+  capturing.value = true;
+  captureStatus.value = null;
+  setBanner("busy", "正在抓包 " + seconds + " 秒…");
+  pushLog("开始导出抓包（" + seconds + " 秒），结束后自动下载");
+  try {
+    await withTimeout(apiPost("/api/v1/capture/dump?seconds=" + seconds), 10000, "开始抓包");
+    await waitCaptureDone(seconds);
+    const path = await withTimeout(saveCapture("/api/v1/capture/dump/file"), 30000, "下载抓包文件");
+    capturePath.value = path;
+    setBanner("ok", captureDoneText(captureStatus.value) + "，已保存到本机");
+    pushLog("抓包已保存：" + path);
+    await openCaptureInWireshark();
+  } catch (e) {
+    const reason = captureErrorText(errText(e));
+    setBanner("err", "抓包失败：" + reason);
+    pushLog("抓包失败：" + reason);
+  } finally {
+    capturing.value = false;
+  }
+}
+
+async function refreshCaptureStatus() {
+  try {
+    const st = await apiGet("/api/v1/capture/dump");
+    captureStatus.value = st;
+    if (st && st.active) setBanner("busy", captureProgressText(st, CAPTURE_SECONDS_DEFAULT));
+    return st;
+  } catch {
+    return null;
+  }
+}
+
+async function waitCaptureDone(seconds) {
+  const deadline = Date.now() + (Number(seconds) + 15) * 1000;
+  while (Date.now() < deadline) {
+    const st = await refreshCaptureStatus();
+    if (st && !st.active && st.ready) return st;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("抓包超时，请稍后重试");
+}
+
+async function openCaptureInWireshark() {
+  if (!capturePath.value) {
+    setBanner("err", "还没有抓包文件，请先点「抓包导出」");
+    return;
+  }
+  try {
+    const msg = await openInWireshark(capturePath.value);
+    setBanner("ok", msg);
+    pushLog(msg);
+  } catch (e) {
+    const reason = errText(e);
+    setBanner("err", "打开失败：" + reason + "（文件已保存到 " + capturePath.value + "）");
+    pushLog("打开 Wireshark 失败：" + reason);
+  }
+}
+
+// ---------------- 实时通道（服务端 SSE 推送，替代轮询） ----------------
+let lastStreamAt = 0;
+let unlistenSnapshot = null;
+let unlistenAlert = null;
+// pcap 拖拽填入路径的监听句柄
+let unlistenDragDrop = null;
+
+async function setupStream() {
+  if (streamStarted.value) return;
+  try {
+    await startStream();
+    streamStarted.value = true;
+    pushLog("实时通道已连接（服务端推送，1 秒/条）");
+    if (!unlistenSnapshot) {
+      unlistenSnapshot = await listen("metd-snapshot", (ev) => {
+        lastStreamAt = Date.now();
+        applyNow(ev.payload);
+      });
+    }
+    if (!unlistenAlert) {
+      unlistenAlert = await listen("metd-alert", () => refreshAlerts());
+    }
+  } catch (e) {
+    streamStarted.value = false;
+    pushLog("实时通道不可用，继续使用轮询：" + errText(e));
+  }
+}
+
+async function teardownStream() {
+  streamStarted.value = false;
+  try {
+    await stopStream();
+  } catch {
+    // 忽略
+  }
+  // unlisten 必须显式调用：原先只停 Rust 侧的 SSE 任务，这两个前端监听句柄一直挂着，
+  // 每次 reconnect 都会再叠一层（旧句柄仍会把事件写进当前界面）。
+  const offs = [unlistenSnapshot, unlistenAlert];
+  unlistenSnapshot = null;
+  unlistenAlert = null;
+  for (const off of offs) {
+    if (typeof off !== "function") continue;
+    try {
+      await off();
+    } catch {
+      // 忽略单个句柄的注销失败
+    }
+  }
+}
+
+// ---------------- 运维动作（白名单动作 + 命令预览 + 审计） ----------------
+async function loadActions() {
+  if (!connected.value) return;
+  try {
+    const data = await apiGet("/api/v1/actions");
+    actions.value = (data && data.items) || [];
+  } catch (e) {
+    actions.value = [];
+    pushLog("加载运维动作失败：" + errText(e));
+  }
+}
+
+async function loadActionHistory() {
+  if (!connected.value) return;
+  try {
+    const data = await apiGet("/api/v1/actions/history");
+    actionHistory.value = (data && data.items) || [];
+  } catch {
+    actionHistory.value = [];
+  }
+}
+// 手动刷新指令清单（服务端动作目录 + 最近执行记录）
+function reloadCommands() {
+  loadActions();
+  loadActionHistory();
+}
+
+// 打开动作弹窗：立刻显示将要执行的命令，避免"点下去不知道做了什么"
+function openAction(a) {
+  actionDialog.open = true;
+  actionDialog.action = a;
+  actionDialog.params = {};
+  (a.params || []).forEach((p) => {
+    actionDialog.params[p.name] = "";
+  });
+  actionDialog.result = null;
+  actionDialog.output = "";
+  actionDialog.error = "";
+}
+
+function closeActionDialog() {
+  actionDialog.open = false;
+}
+
+async function runAction() {
+  const a = actionDialog.action;
+  if (!a || !a.id) return;
+  const checked = validateActionParams(a, actionDialog.params);
+  if (!checked.ok) {
+    actionDialog.error = checked.error;
+    return;
+  }
+  actionDialog.running = true;
+  actionDialog.error = "";
+  actionDialog.result = null;
+  setBanner("busy", "正在 Linux 上执行：" + a.title);
+  try {
+    const res = await withTimeout(
+      apiPostJson("/api/v1/actions/run", { id: a.id, params: checked.params, confirm: !!a.danger }),
+      40000,
+      "执行动作",
+    );
+    actionDialog.result = res;
+    actionDialog.output = formatActionResult(res);
+    setBanner(res.exit_code === 0 ? "ok" : "err", a.title + "：" + actionResultSummary(res));
+    pushLog("执行动作：" + a.title + "（" + actionResultSummary(res) + "）");
+    loadActionHistory();
+  } catch (e) {
+    const reason = errText(e);
+    actionDialog.error = reason;
+    setBanner("err", "执行失败：" + reason);
+    pushLog("执行动作失败：" + a.title + "：" + reason);
+  } finally {
+    actionDialog.running = false;
+  }
+}
+
+// 复制文本到剪贴板（失败时给出可操作的提示）
+function copyText(text) {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => pushLog("已复制命令到剪贴板"),
+      () => pushLog("复制失败，请手动选择命令文本"),
+    );
+  } else {
+    pushLog("当前环境不支持自动复制，请手动选择命令文本");
+  }
+}
+
+function copyActionCommands() {
+  copyText(actionPreview.value);
+}
+
+// 复制"全部指令"清单（按分类分节，便于留档或交给同事）
+function copyAllCommands() {
+  copyText(commandsDigest(actionGroups.value));
+}
+
+function startTimers() {
+  stopTimers();
+  nowTimer = setInterval(refreshNow, 1000);
+  // 曲线与 KPI 同步：历史数据每 2 秒重建一次，实时点每秒补一次（见 refreshNow）
+  historyTimer = setInterval(refreshHistory, 2000);
+  sessionTimer = setInterval(() => loadSessions(sessPage.value), 8000);
+  alertTimer = setInterval(refreshAlerts, 5000);
+  snapshotTimer = setInterval(() => {
+    saveCurrentTab();
+    persistTabs();
+  }, 10000);
+}
+function stopTimers() {
+  if (nowTimer) clearInterval(nowTimer);
+  if (historyTimer) clearInterval(historyTimer);
+  if (sessionTimer) clearInterval(sessionTimer);
+  if (alertTimer) clearInterval(alertTimer);
+  if (snapshotTimer) clearInterval(snapshotTimer);
+  nowTimer = historyTimer = sessionTimer = alertTimer = snapshotTimer = null;
+}
+async function refreshAlerts() {
+  if (!connected.value) return;
+  try {
+    const data = await apiGet("/api/v1/alerts?status=firing");
+    firingAlerts.value = (data && data.items) || [];
+  } catch {
+    // 告警查询失败不影响主流程
+  }
+}
+function alertValue(a) {
+  if (a.series === "traffic.bps") return fmtRate(a.value);
+  if (a.series === "traffic.pps") return fmtPps(a.value);
+  return fmtNum(a.value);
+}
+function alertThreshold(a) {
+  if (a.series === "traffic.bps") return fmtRate(a.threshold);
+  if (a.series === "traffic.pps") return fmtPps(a.threshold);
+  return fmtNum(a.threshold);
+}
+// 把一份实时指标写进界面（轮询与实时推送共用同一条路径）
+function applyNow(data) {
+  if (!data || typeof data !== "object") return;
+  Object.keys(now).forEach((k) => delete now[k]);
+  Object.assign(now, data);
+  failCount = 0;
+  // 让曲线末尾与上方 KPI 数值保持一致
+  const tsMs = Date.parse(now.ts || "");
+  if (Number.isFinite(tsMs)) {
+    history.value = mergeLiveSample(
+      history.value,
+      { t: Math.floor(tsMs / 1000), bps: Number(now.bps) || 0, pps: Number(now.pps) || 0 },
+      { step: HISTORY_STEP, maxPoints: LIVE_MAX_POINTS },
+    );
+  }
+}
+
+async function refreshNow() {
+  // 实时通道正常时不需要轮询（连续 5 秒没收到推送则自动回退到轮询）
+  if (streamStarted.value && Date.now() - lastStreamAt < 5000) return;
+  try {
+    const data = await apiGet("/api/v1/traffic/now");
+    applyNow(data);
+  } catch (e) {
+    failCount += 1;
+    if (failCount >= 4) {
+      const reason = errText(e);
+      setBanner("err", "连接中断：" + reason);
+      pushLog("连接中断：" + reason);
+      connected.value = false;
+      stopTimers();
+      // 轮询都连续失败 4 次了，旧流也必须停：否则它会在后台无限重连，
+      // 后面的 connect() 又会因为 streamStarted 仍为 true 而跳过 setupStream。
+      teardownStream();
+    }
+  }
+}
+async function refreshHistory() {
+  try {
+    const data = await apiGet("/api/v1/traffic/history?since=3600&step=" + HISTORY_STEP);
+    history.value = (data && data.points) || [];
+  } catch {
+    // 轮询失败统一处理
+  }
+}
+async function loadSessions(page) {
+  if (!connected.value || sessLoading.value) return;
+  sessLoading.value = true;
+  sessPage.value = Math.max(1, page || 1);
+  const params = new URLSearchParams();
+  params.set("page", String(sessPage.value));
+  params.set("page_size", String(pageSize));
+  if (sessFilter.ip.trim()) params.set("ip", sessFilter.ip.trim());
+  if (sessFilter.proto) params.set("proto", sessFilter.proto);
+  try {
+    const data = await apiGet("/api/v1/sessions?" + params.toString());
+    sessRows.value = (data && data.items) || [];
+    sessTotal.value = (data && data.total) || 0;
+  } catch {
+    // 列表失败不打断主流程
+  } finally {
+    sessLoading.value = false;
+  }
+}
+
+let filterTimer = null;
+watch(
+  () => [sessFilter.ip, sessFilter.proto],
+  () => {
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => loadSessions(1), 400);
+  },
+);
+
+onMounted(async () => {
+  pushLog("MeTD 启动，进行 IPC 自检…");
+  applyView();
+  document.documentElement.setAttribute("data-theme", theme.value);
+  try {
+    await withTimeout(ping(), 3000, "IPC 自检");
+    ipcOk.value = true;
+    pushLog("IPC 自检通过");
+  } catch (e) {
+    ipcOk.value = false;
+    pushLog("IPC 自检失败：" + errText(e));
+  }
+  try {
+    settings.autostart = Boolean(await withTimeout(autostartIsEnabled(), 3000, "自启状态查询"));
+  } catch {
+    settings.autostart = false;
+  }
+  // 恢复首个标签页的界面数据；若上次处于连接状态则自动重连
+  const first = activeTab();
+  if (first) {
+    applyTabSnapshot(first);
+    if (first.base) {
+      pushLog("恢复工作区：" + first.title);
+      if (first.snapshot && first.snapshot.connected) {
+        connect();
+      }
+    }
+  }
+  // 数据来源：恢复偏好（离线模式下本机引擎可能还在跑，把状态与地址找回来）
+  pushLog("数据来源：" + modeLabel(sourceMode.value));
+  await refreshLocalEngineStatus();
+  if (sourceMode.value === "offline" && !localEngine.value && !connected.value) {
+    pushLog("离线模式：请选择 pcap 文件后点「启动本机分析」");
+  }
+  if (sourceMode.value === "local" && !localEngine.value && !connected.value) {
+    pushLog("本机实时抓包：点「启动本机实时抓包」拉起本机引擎（需要管理员权限）");
+  }
+  // pcap 路径可以拖进来：WebView2 的 <input type="file"> 拿不到完整路径，
+  // 拖拽事件（Tauri 核心 API，无需 dialog 插件）给的是真实路径
+  try {
+    unlistenDragDrop = await getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload && event.payload.type === "drop") onDropPaths(event.payload.paths);
+    });
+  } catch (e) {
+    pushLog("拖拽填入 pcap 路径不可用：" + errText(e));
+  }
+  appWindow.onCloseRequested(async (event) => {
+    if (settings.closeToTray) {
+      event.preventDefault();
+      // 关闭到托盘 = 界面不再显示，实时通道与定时器都没必要继续跑（会留下后台轮询、
+      // 也会让「已关闭」的窗口继续消耗令牌配额），但连接本身保留，再次点开图标能继续看。
+      await teardownStream();
+      stopTimers();
+      await appWindow.hide();
+    }
+  });
+  if (settings.startMinimized) {
+    setTimeout(() => {
+      appWindow.hide().catch(() => {});
+    }, 1500);
+  }
+});
+
+onBeforeUnmount(() => {
+  stopTimers();
+  if (toastTimer) clearTimeout(toastTimer);
+  // filterTimer 是 400ms 的会话过滤防抖，卸载后仍会触发一次 loadSessions（打向已断开的连接）
+  if (filterTimer) clearTimeout(filterTimer);
+  filterTimer = null;
+  // 拖拽监听句柄同样要显式注销，否则每次挂载都会再叠一层
+  if (typeof unlistenDragDrop === "function") {
+    try {
+      unlistenDragDrop();
+    } catch {
+      // 忽略注销失败
+    }
+    unlistenDragDrop = null;
+  }
+  teardownStream();
+});
+</script>
+
+<style scoped>
+.shell { display: flex; flex-direction: column; height: 100%; }
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+  flex-wrap: wrap;
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgb(var(--panel-rgb) / var(--alpha, 1));
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  padding: 6px 10px;
+  font-size: 12px;
+  max-width: 220px;
+}
+.tab:hover { color: var(--text); border-color: var(--accent); }
+.tab.active { color: var(--text); background: var(--panel2); border-color: var(--accent); font-weight: 600; }
+.tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-close { padding: 0 2px; border-radius: 4px; }
+.tab-close:hover { color: var(--danger); }
+.tab.add { font-weight: 700; padding: 6px 12px; }
+.tab-hint { margin-left: auto; font-size: 12px; }
+.layout { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; }
+.rail {
+  width: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgb(var(--panel-rgb) / var(--alpha, 1));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 7px;
+  overflow: hidden;
+  transition: width 0.22s ease;
+}
+.rail:hover { width: 168px; }
+.rail-grow { flex: 1; }
+.rail-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  padding: 9px 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+.rail-btn:hover { background: rgb(var(--panel2-rgb) / var(--alpha, 1)); }
+.rail-btn.active { background: rgb(var(--panel2-rgb) / var(--alpha, 1)); color: var(--accent); }
+.rail-icon { font-size: 21px; flex-shrink: 0; transition: transform 0.15s ease; }
+.rail-btn:hover .rail-icon { transform: scale(1.3); }
+.rail-txt { opacity: 0; transition: opacity 0.18s ease 0.08s; }
+.rail:hover .rail-txt { opacity: 1; }
+.side {
+  width: 330px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+.panel-title { font-weight: 700; font-size: 15px; }
+.hint { font-size: 12px; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { color: var(--muted); font-size: 12px; }
+.token-row { display: flex; gap: 6px; }
+.token-row input { flex: 1; }
+.eye { flex-shrink: 0; }
+.row { display: flex; gap: 6px; }
+.grow { flex: 1; }
+.banner { padding: 8px 10px; border-radius: 7px; font-size: 12px; word-break: break-all; }
+.banner-busy { background: #12314a; color: #bae6fd; border: 1px solid #0e7490; }
+.banner-ok { background: #064e3b; color: #d1fae5; border: 1px solid #10b981; }
+.banner-err { background: #450a0a; color: #fee2e2; border: 1px solid #ef4444; }
+.section-title { font-size: 12px; margin-bottom: 6px; }
+.empty { font-size: 12px; }
+.profile { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+.profile-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgb(var(--panel2-rgb) / var(--alpha, 1));
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+.profile-main:hover { border-color: var(--accent); }
+.profile-main.active { border-color: var(--ok); }
+.profile-name { font-weight: 600; }
+.profile-addr { font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.btn.small { padding: 4px 8px; font-size: 12px; }
+.profile-del { background: none; border: none; color: var(--muted); font-size: 17px; padding: 2px 6px; }
+.profile-del:hover { color: var(--danger); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0; }
+.dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dot.big { width: 9px; height: 9px; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--danger); }
+.status-line { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.logbox { overflow: auto; }
+.log-line {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--line);
+  word-break: break-all;
+}
+.k-ok { color: var(--ok); }
+.k-bad { color: var(--danger); }
+.info-line { display: flex; gap: 16px; font-size: 12px; flex-wrap: wrap; }
+.alert-banner { border-color: var(--danger); }
+.alert-title { font-weight: 700; color: var(--danger); margin-bottom: 6px; }
+.alert-item { font-size: 12px; color: var(--danger); padding: 2px 0; }
+.sess-head { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.sess-title { font-weight: 700; margin-right: auto; }
+.filter-ip { width: 170px; }
+.welcome { max-width: 560px; margin: auto; text-align: center; padding: 30px; }
+.welcome h2 { margin: 0 0 10px; }
+.small { font-size: 12px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(2, 6, 16, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  width: 420px;
+  max-height: 86vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.dialog-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; }
+.seg { display: flex; gap: 6px; }
+.seg-btn {
+  flex: 1;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.seg-btn.active { background: var(--accent); border-color: var(--accent); color: #06222b; font-weight: 600; }
+.switch-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.switch {
+  width: 42px;
+  height: 22px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  position: relative;
+  transition: background 0.2s;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: left 0.2s, background 0.2s;
+}
+.switch.on { background: var(--ok); border-color: var(--ok); }
+.switch.on::after { left: 22px; background: #fff; }
+.hidden { display: none; }
+.toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  max-width: 70vw;
+}
+.toast-ok { background: #065f46; color: #d1fae5; border: 1px solid #10b981; }
+.toast-err { background: #7f1d1d; color: #fee2e2; border: 1px solid #ef4444; }
+.toast-enter-active, .toast-leave-active { transition: opacity 0.25s, transform 0.25s; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+.action-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 7px 9px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.action-item:hover { border-color: var(--accent); }
+.action-row { display: flex; align-items: center; gap: 6px; }
+.action-title { font-size: 13px; font-weight: 600; }
+.danger-tag {
+  font-size: 11px;
+  color: #fca5a5;
+  border: 1px solid #7f1d1d;
+  background: #2a1416;
+  border-radius: 5px;
+  padding: 0 5px;
+}
+.history-line { display: flex; gap: 8px; font-size: 11px; padding: 2px 0; }
+.file-path { flex: 1; min-width: 90px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 7px; font-size: 12px; outline: none; }
+.topn-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.topn-key { font-size: 12px; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topn-bar { flex: 1; height: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.topn-bar i { display: block; height: 100%; background: var(--accent); }
+.host-row { display: flex; align-items: flex-start; gap: 7px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.host-main { flex: 1; min-width: 0; }
+.host-name { font-size: 13px; font-weight: 600; }
+.host-badges { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.badge-mini { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+.file-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.file-name { flex: 1; text-align: left; background: none; border: none; color: var(--text); font-size: 12px; cursor: pointer; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name:hover { color: var(--accent); }
+.history-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Linux 指令面板：按分类分节展示全部白名单命令 */
+.cmd-group { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
+.cmd-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cmd-group-title { font-size: 13px; font-weight: 600; }
+.cmd-line {
+  display: block;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgb(var(--panel-rgb) / var(--alpha, 1));
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 6px;
+  margin-top: 3px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.action-dialog { max-width: 720px; }
+.cmd-box, .out-box {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow: auto;
+  margin: 4px 0 8px;
+}
+.out-box { max-height: 260px; }
+
+/* 界面插件：侧栏管理列表（主区面板样式在 components/PluginPanel.vue） */
+.plugin-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+.plugin-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.plugin-name {
+  font-weight: 500;
+}
+</style>

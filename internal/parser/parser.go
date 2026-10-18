@@ -1,0 +1,228 @@
+// Package parser 实现链路层/网络层/传输层的协议解码。
+// MVP 范围：以太网（含单层 VLAN）、IPv4、TCP/UDP/ICMP。
+// 该包同时提供测试与 synthetic 数据源使用的报文构造器（Builder）。
+package parser
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"net/netip"
+)
+
+const (
+	ProtoICMP   = 1
+	ProtoTCP    = 6
+	ProtoUDP    = 17
+	ProtoICMPv6 = 58
+
+	EthTypeIPv4 = 0x0800
+	EthTypeIPv6 = 0x86dd
+	EthTypeARP  = 0x0806
+	EthTypeVLAN = 0x8100
+	EthTypeQinQ = 0x88a8
+	ethHdrLen   = 14
+	ipv4HdrMin  = 20
+	ipv6HdrLen  = 40
+	tcpHdrMin   = 20
+	udpHdrMin   = 8
+)
+
+// Info 是解析器输出的"包级摘要"，不含原始字节，供流表与聚合使用。
+type Info struct {
+	Protocol  uint8
+	SrcIP     netip.Addr
+	DstIP     netip.Addr
+	SrcPort   uint16
+	DstPort   uint16
+	TCPFlags  uint8 // TCP 标志位（仅 TCP 有意义）
+	IPv6      bool  // 是否为 IPv6 报文
+	L4Payload int   // 传输层负载长度
+}
+
+var (
+	ErrShort       = errors.New("报文长度不足")
+	ErrUnsupported = errors.New("不支持的报文类型")
+)
+
+// Parse 解码一个完整以太网帧（IPv4 / IPv6）。只做"剥头提取元数据"，不做校验和验证。
+func Parse(b []byte) (*Info, error) {
+	etype, l3, ok := etherTypeAt(b)
+	if !ok {
+		return nil, ErrShort
+	}
+	switch etype {
+	case EthTypeIPv4:
+		return parseIPv4(b, l3)
+	case EthTypeIPv6:
+		return parseIPv6(b, l3)
+	default:
+		return nil, fmt.Errorf("%w: ethertype=0x%04x", ErrUnsupported, etype)
+	}
+}
+
+// EtherType 返回帧的真实 EtherType（自动跳过单层 VLAN 与 QinQ 标签）。
+// 帧过短时返回 false；过滤表达式用它判断 ip/ip6/arp 这类链路层条件。
+func EtherType(b []byte) (uint16, bool) {
+	etype, _, ok := etherTypeAt(b)
+	return etype, ok
+}
+
+// etherTypeAt 返回真实 EtherType 与 L3 起点（EtherType 字段之后）。
+// 跳过 VLAN tag（支持单层与 QinQ），两者都按大端读取。
+func etherTypeAt(b []byte) (uint16, int, bool) {
+	if len(b) < ethHdrLen {
+		return 0, 0, false
+	}
+	off := 12
+	etype := int(binary.BigEndian.Uint16(b[off:]))
+	for etype == EthTypeVLAN || etype == EthTypeQinQ {
+		off += 4
+		if len(b) < off+2 {
+			return 0, 0, false
+		}
+		etype = int(binary.BigEndian.Uint16(b[off:]))
+	}
+	return uint16(etype), off + 2, true
+}
+
+// parseIPv4 解析 IPv4 头并继续解析传输层。
+func parseIPv4(b []byte, l3 int) (*Info, error) {
+	if len(b) < l3+ipv4HdrMin {
+		return nil, ErrShort
+	}
+	verIHL := b[l3]
+	if verIHL>>4 != 4 {
+		return nil, fmt.Errorf("%w: IP 版本=%d", ErrUnsupported, verIHL>>4)
+	}
+	ihl := int(verIHL&0x0f) * 4
+	if ihl < ipv4HdrMin || len(b) < l3+ihl {
+		return nil, ErrShort
+	}
+	info := &Info{
+		Protocol:  b[l3+9],
+		SrcIP:     netip.AddrFrom4([4]byte{b[l3+12], b[l3+13], b[l3+14], b[l3+15]}),
+		DstIP:     netip.AddrFrom4([4]byte{b[l3+16], b[l3+17], b[l3+18], b[l3+19]}),
+		L4Payload: len(b) - (l3 + ihl),
+	}
+	return parseL4(info, b, l3+ihl)
+}
+
+// extHeaders 是需要跳过的常见 IPv6 扩展头：逐跳、路由、分片、目的选项。
+var extHeaders = map[uint8]bool{0: true, 43: true, 44: true, 60: true}
+
+// parseIPv6 解析 IPv6 头（含最多 4 个扩展头）并继续解析传输层。
+func parseIPv6(b []byte, l3 int) (*Info, error) {
+	if len(b) < l3+ipv6HdrLen {
+		return nil, ErrShort
+	}
+	if b[l3]>>4 != 6 {
+		return nil, fmt.Errorf("%w: IP 版本=%d", ErrUnsupported, b[l3]>>4)
+	}
+	next := b[l3+6]
+	var s16, d16 [16]byte
+	copy(s16[:], b[l3+8:l3+24])
+	copy(d16[:], b[l3+24:l3+40])
+	l4 := l3 + ipv6HdrLen
+	for i := 0; i < 4 && extHeaders[next]; i++ {
+		if len(b) < l4+2 {
+			return nil, ErrShort
+		}
+		hdrNext := b[l4]
+		hlen := (int(b[l4+1]) + 1) * 8
+		if len(b) < l4+hlen {
+			return nil, ErrShort
+		}
+		l4 += hlen
+		next = hdrNext
+	}
+	info := &Info{
+		Protocol:  next,
+		SrcIP:     netip.AddrFrom16(s16),
+		DstIP:     netip.AddrFrom16(d16),
+		IPv6:      true,
+		L4Payload: len(b) - l4,
+	}
+	return parseL4(info, b, l4)
+}
+
+// parseL4 解析传输层头部（TCP 端口与标志位、UDP 端口；ICMP/ICMPv6 无端口）。
+func parseL4(info *Info, b []byte, l4 int) (*Info, error) {
+	switch info.Protocol {
+	case ProtoTCP:
+		if len(b) < l4+tcpHdrMin {
+			return nil, ErrShort
+		}
+		info.SrcPort = binary.BigEndian.Uint16(b[l4:])
+		info.DstPort = binary.BigEndian.Uint16(b[l4+2:])
+		info.TCPFlags = b[l4+13]
+		doff := int(b[l4+12]>>4) * 4 // 数据偏移 = TCP 头部总长（含选项）
+		if doff < tcpHdrMin {
+			doff = tcpHdrMin
+		}
+		if l4+doff <= len(b) {
+			info.L4Payload = len(b) - (l4 + doff)
+		}
+	case ProtoUDP:
+		if len(b) < l4+udpHdrMin {
+			return nil, ErrShort
+		}
+		info.SrcPort = binary.BigEndian.Uint16(b[l4:])
+		info.DstPort = binary.BigEndian.Uint16(b[l4+2:])
+		info.L4Payload -= udpHdrMin
+	case ProtoICMP:
+		// ICMP 无端口，保持 0
+	default:
+		// 其他传输层协议（如 GRE/ESP）仅保留 IP 层信息
+	}
+	return info, nil
+}
+
+// BuildEthIPv4TCP 构造一个以太网 + IPv4 + TCP 报文（校验和为 0，解析层不校验）。
+func BuildEthIPv4TCP(src, dst netip.Addr, sport, dport uint16, payload []byte, syn bool) []byte {
+	flags := uint16(0x10) // ACK
+	if syn {
+		flags = 0x02
+	}
+	tcp := make([]byte, 20)
+	binary.BigEndian.PutUint16(tcp[0:], sport)
+	binary.BigEndian.PutUint16(tcp[2:], dport)
+	binary.BigEndian.PutUint32(tcp[4:], 1) // seq
+	binary.BigEndian.PutUint16(tcp[12:], 0x5000|flags)
+	binary.BigEndian.PutUint16(tcp[14:], 65535) // window
+	tcp = append(tcp, payload...)
+	return buildEthIPv4(src, dst, ProtoTCP, tcp)
+}
+
+// BuildEthIPv4UDP 构造一个以太网 + IPv4 + UDP 报文（校验和为 0）。
+func BuildEthIPv4UDP(src, dst netip.Addr, sport, dport uint16, payload []byte) []byte {
+	udp := make([]byte, 8)
+	binary.BigEndian.PutUint16(udp[0:], sport)
+	binary.BigEndian.PutUint16(udp[2:], dport)
+	binary.BigEndian.PutUint16(udp[4:], uint16(8+len(payload)))
+	udp = append(udp, payload...)
+	return buildEthIPv4(src, dst, ProtoUDP, udp)
+}
+
+func buildEthIPv4(src, dst netip.Addr, proto uint8, l4 []byte) []byte {
+	s4, d4 := src.As4(), dst.As4()
+	total := 20 + len(l4)
+	ip := make([]byte, 20)
+	ip[0] = 0x45
+	binary.BigEndian.PutUint16(ip[2:], uint16(total))
+	binary.BigEndian.PutUint16(ip[4:], 0x1234) // ID
+	ip[8] = 64                                 // TTL
+	ip[9] = proto
+	copy(ip[12:16], s4[:])
+	copy(ip[16:20], d4[:])
+
+	frame := make([]byte, 0, ethHdrLen+len(ip)+len(l4))
+	frame = append(frame,
+		0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // dst MAC
+		0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, // src MAC
+		0x08, 0x00, // EtherType IPv4
+	)
+	frame = append(frame, ip...)
+	frame = append(frame, l4...)
+	return frame
+}
