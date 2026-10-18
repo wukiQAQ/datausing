@@ -98,7 +98,10 @@ type FileStore struct {
 	retention time.Duration
 	metrics   []MetricPoint
 	flows     []FlowRecord
+	findings  []DLPFinding // DLP 检测结果（单独一个 JSONL 文件，保留期更长）
+	findingID int64        // 下一条 finding 的自增 ID
 	mf, ff    *os.File
+	df        *os.File
 }
 
 // OpenFileStore 打开（不存在则创建）数据目录并加载已有数据。
@@ -115,11 +118,20 @@ func OpenFileStore(dir string, retention time.Duration) (*FileStore, error) {
 		s.mf.Close()
 		return nil, err
 	}
+	if s.df, err = os.OpenFile(filepath.Join(dir, "findings.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
+		s.mf.Close()
+		s.ff.Close()
+		return nil, err
+	}
 	if err := s.loadMetrics(filepath.Join(dir, "metrics.jsonl")); err != nil {
 		s.Close()
 		return nil, err
 	}
 	if err := s.loadFlows(filepath.Join(dir, "flows.jsonl")); err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err := s.loadFindings(filepath.Join(dir, "findings.jsonl")); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -245,6 +257,15 @@ func (s *FileStore) Prune(now time.Time) error {
 		}
 	}
 	s.flows = keepF
+	// findings 的保留期比 flows 长（默认 7 天），单独算截止时间。
+	findingCut := now.Add(-findingRetention)
+	keepD := s.findings[:0]
+	for _, f := range s.findings {
+		if f.Ts.After(findingCut) {
+			keepD = append(keepD, f)
+		}
+	}
+	s.findings = keepD
 	return s.rewrite()
 }
 
@@ -255,6 +276,9 @@ func (s *FileStore) rewrite() error {
 		return err
 	}
 	if err := s.ff.Close(); err != nil {
+		return err
+	}
+	if err := s.df.Close(); err != nil {
 		return err
 	}
 	if err := s.rewriteOne("metrics.jsonl", func(f *os.File) error {
@@ -277,11 +301,24 @@ func (s *FileStore) rewrite() error {
 	}); err != nil {
 		return err
 	}
+	if err := s.rewriteOne("findings.jsonl", func(f *os.File) error {
+		for _, rec := range s.findings {
+			if err := writeLine(f, findingLineFrom(rec)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	var err error
 	if s.mf, err = os.OpenFile(filepath.Join(s.dir, "metrics.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
 		return err
 	}
 	if s.ff, err = os.OpenFile(filepath.Join(s.dir, "flows.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
+		return err
+	}
+	if s.df, err = os.OpenFile(filepath.Join(s.dir, "findings.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
 		return err
 	}
 	return nil
@@ -310,7 +347,7 @@ func (s *FileStore) rewriteOne(name string, fill func(*os.File) error) error {
 func (s *FileStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return errors.Join(s.mf.Close(), s.ff.Close())
+	return errors.Join(s.mf.Close(), s.ff.Close(), s.df.Close())
 }
 
 func writeLine(f *os.File, v any) error {

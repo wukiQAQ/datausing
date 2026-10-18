@@ -99,8 +99,10 @@ type Server struct {
 	plugins        []plugin.Spec
 	pluginWarnings []string
 	pluginsEnabled bool
-	started        time.Time
-	ui             fs.FS
+	// DLP 检测结果存储：nil 表示当前后端不支持（接口返回 503）。
+	findings storage.FindingStore
+	started  time.Time
+	ui       fs.FS
 	// nowFn 提供查询窗口使用的"数据时间"基准，nil 表示用墙钟。
 	// 离线回放时由 cmd/netmon 注入 app.DataNow，详见 SetDataClock。
 	nowFn func() time.Time
@@ -114,7 +116,13 @@ const maxHistorySeconds = 30 * 24 * 3600
 const maxPageSize = 100
 
 func New(cfg *config.Config, agg *aggregator.Agg, table *flow.Table, store storage.Backend, ui fs.FS) *Server {
-	return &Server{agg: agg, store: store, table: table, cfg: cfg, started: time.Now(), ui: ui}
+	srv := &Server{agg: agg, store: store, table: table, cfg: cfg, started: time.Now(), ui: ui}
+	// DLP 结果存储是可选能力：两种内置后端都实现了 FindingStore，
+	// 这里用类型断言而不是扩 Backend 接口，避免第三方后端被迫实现用不到的接口。
+	if fs, ok := store.(storage.FindingStore); ok {
+		srv.findings = fs
+	}
+	return srv
 }
 
 // SetDataClock 注入"数据时间"时钟（例如 app.DataNow）。
@@ -194,6 +202,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/stream", s.handleStream)
 	mux.HandleFunc("GET /api/v1/topn", s.handleTopN)
 	mux.HandleFunc("GET /api/v1/plugins", s.handlePlugins)
+	// DLP 检测结果（内容级识别）相关接口
+	mux.HandleFunc("GET /api/v1/dlp/findings", s.handleDLPFindings)
+	mux.HandleFunc("GET /api/v1/dlp/findings/{id}", s.handleDLPFindingDetail)
+	mux.HandleFunc("GET /api/v1/dlp/stats", s.handleDLPStats)
+	mux.HandleFunc("GET /api/v1/dlp/export", s.handleDLPExport)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /api/v1/system/upgrade", s.handleUpgradeStatus)
 	mux.HandleFunc("POST /api/v1/system/upgrade", s.handleUpgrade)
@@ -258,6 +271,8 @@ func (s *Server) statsMap() map[string]any {
 		"source":       s.cfg.Source,
 		"version":      buildinfo.Version,
 		"features":     buildinfo.Features,
+		// dlp 表示当前存储后端支持检测结果查询（前端据此决定是否显示 DLP 面板）
+		"dlp": s.findings != nil,
 	}
 	// 采集过滤：把表达式与已过滤帧数一并上报（仅在启用过滤时出现）
 	if s.filter != "" {

@@ -86,6 +86,11 @@ func OpenSQLiteStore(path string, retention time.Duration) (*SQLiteStore, error)
 			return nil, fmt.Errorf("建表失败: %w", err)
 		}
 	}
+	// DLP 检测结果表：老库升级时补建，已有库不受影响。
+	if err := ensureFindingSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("建 DLP 结果表失败: %w", err)
+	}
 	return &SQLiteStore{db: db, retention: retention}, nil
 }
 
@@ -341,14 +346,17 @@ func (s *SQLiteStore) QuerySessions(f SessionFilter, limit, offset int) ([]FlowR
 	return out, total, rows.Err()
 }
 
-// Prune 按保留策略删除过期数据。
+// Prune 按保留策略删除过期数据（flows/metrics 用配置的 retention，
+// findings 用更长的 7 天保留期，便于审计与赛后复盘）。
 func (s *SQLiteStore) Prune(now time.Time) error {
 	cut := now.Add(-s.retention).UnixNano()
 	if _, err := s.db.Exec(`DELETE FROM metrics WHERE ts < ?`, cut); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`DELETE FROM flows WHERE end < ?`, cut)
-	return err
+	if _, err := s.db.Exec(`DELETE FROM flows WHERE end < ?`, cut); err != nil {
+		return err
+	}
+	return s.PruneFindings(now.Add(-findingRetention))
 }
 
 func (s *SQLiteStore) Close() error { return s.db.Close() }

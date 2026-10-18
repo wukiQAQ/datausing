@@ -11,6 +11,7 @@ import (
 	"github.com/wukiQAQ/datausing/internal/capture"
 	"github.com/wukiQAQ/datausing/internal/dlp"
 	"github.com/wukiQAQ/datausing/internal/parser"
+	"github.com/wukiQAQ/datausing/internal/storage"
 )
 
 var (
@@ -281,4 +282,112 @@ func TestProtoName(t *testing.T) {
 			t.Fatalf("protoName(%d) = %q，期望 %q", proto, got, want)
 		}
 	}
+}
+
+// TestSplitEndpoint 校验 "ip:port" 拆分与异常输入（端口解析失败时记 0，不 panic）。
+func TestSplitEndpoint(t *testing.T) {
+	cases := []struct {
+		in   string
+		ip   string
+		port uint16
+	}{
+		{"10.0.0.5:50001", "10.0.0.5", 50001},
+		{"10.0.0.5", "10.0.0.5", 0},
+		{"10.0.0.5:abc", "10.0.0.5", 0},
+		{"10.0.0.5:70000", "10.0.0.5", 0},
+		{"[2001:db8::1]:443", "[2001:db8::1]", 443},
+	}
+	for _, c := range cases {
+		ip, port := splitEndpoint(c.in)
+		if ip != c.ip || port != c.port {
+			t.Fatalf("splitEndpoint(%q) = (%q,%d)，期望 (%q,%d)", c.in, ip, port, c.ip, c.port)
+		}
+	}
+}
+
+// TestPersistFindings 校验 -db 落库：CLI 检测结果能被存储层按契约查回来，
+// 且入库的是脱敏副本、级别/类别/元信息完整。
+func TestPersistFindings(t *testing.T) {
+	path := writePcap(t, []string{idCardPayload, formPayload, safePayload})
+	src, err := capture.OpenPcapFile(path)
+	if err != nil {
+		t.Fatalf("打开 pcap 失败：%v", err)
+	}
+	defer src.Close()
+	fs, st, err := detect(src, dlp.LevelSafe, 0)
+	if err != nil {
+		t.Fatalf("detect 失败：%v", err)
+	}
+	if len(fs) != 2 {
+		t.Fatalf("期望 2 条命中（身份证 + 表单），实际 %d", len(fs))
+	}
+	if st.Findings != 2 {
+		t.Fatalf("统计命中数 = %d", st.Findings)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "flowmask.db")
+	n, err := persistFindings(dbPath, fs)
+	if err != nil {
+		t.Fatalf("落库失败：%v", err)
+	}
+	if n != len(fs) {
+		t.Fatalf("落库条数 = %d，期望 %d", n, len(fs))
+	}
+
+	store, err := storage.OpenSQLiteStore(dbPath, findingRetention)
+	if err != nil {
+		t.Fatalf("重新打开存储失败：%v", err)
+	}
+	defer store.Close()
+	rows, total, err := store.QueryFindings(storage.FindingFilter{})
+	if err != nil {
+		t.Fatalf("查询落库结果失败：%v", err)
+	}
+	if total != 2 || len(rows) != 2 {
+		t.Fatalf("total=%d len=%d，期望 2", total, len(rows))
+	}
+	// 倒序返回：表单那条时间更晚，排在前
+	if rows[0].Level != "L2" || rows[1].Level != "L3" {
+		t.Fatalf("级别顺序不符：%s / %s", rows[0].Level, rows[1].Level)
+	}
+	// L3 那条：脱敏副本不含原文、直达标记保留、端口与字节数完整
+	if strings.Contains(rows[1].Masked, "11010519491231002X") || !strings.Contains(rows[1].Masked, "已屏蔽") {
+		t.Fatalf("L3 落库内容不是脱敏副本：%q", rows[1].Masked)
+	}
+	if !rows[1].Direct || rows[1].SrcIP != "10.0.0.5" || rows[1].SrcPort != 50000 {
+		t.Fatalf("L3 元信息不完整：%+v", rows[1])
+	}
+	if rows[1].PayloadBytes <= 0 || rows[1].Model != "l1" {
+		t.Fatalf("L3 payload_bytes/model 缺失：%+v", rows[1])
+	}
+	if !hasType(rows[1].Types, "id_card") || !hasType(rows[1].Types, "phone") {
+		t.Fatalf("L3 类别 = %v", rows[1].Types)
+	}
+	// L2 那条：邮箱 + 地址共现
+	if !hasType(rows[0].Types, "email") || !hasType(rows[0].Types, "address") {
+		t.Fatalf("L2 类别 = %v", rows[0].Types)
+	}
+
+	// 统计口径与 API 一致：L3/L2 各一条，SAFE 补零
+	stats, err := store.FindingStats(storage.FindingFilter{}, time.Minute)
+	if err != nil {
+		t.Fatalf("统计失败：%v", err)
+	}
+	byLevel := map[string]int{}
+	for _, c := range stats.ByLevel {
+		byLevel[c.Key] = c.Count
+	}
+	if byLevel["L3"] != 1 || byLevel["L2"] != 1 || len(stats.ByLevel) != 4 {
+		t.Fatalf("落库统计不符：%+v", stats.ByLevel)
+	}
+}
+
+// hasType 判断类别列表里是否包含指定类别。
+func hasType(types []string, want string) bool {
+	for _, typ := range types {
+		if typ == want {
+			return true
+		}
+	}
+	return false
 }

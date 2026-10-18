@@ -105,6 +105,21 @@ func (t EntityType) Label() string {
 	return string(t)
 }
 
+// ParseEntityType 把中文名或英文标识还原成 EntityType。
+// 展示层用中文（"身份证号"）、存储与接口层用英文键（"id_card"），两者在这里互转。
+func ParseEntityType(s string) (EntityType, bool) {
+	v := EntityType(strings.TrimSpace(s))
+	if _, ok := typeLabels[v]; ok {
+		return v, true
+	}
+	for typ, label := range typeLabels {
+		if label == string(v) {
+			return typ, true
+		}
+	}
+	return "", false
+}
+
 // Hit 是一次敏感信息命中。Start/End 是在原始文本中的字节下标，Value 为命中内容。
 type Hit struct {
 	Type       EntityType

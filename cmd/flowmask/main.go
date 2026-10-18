@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,6 +25,7 @@ import (
 	"github.com/wukiQAQ/datausing/internal/capture"
 	"github.com/wukiQAQ/datausing/internal/dlp"
 	"github.com/wukiQAQ/datausing/internal/parser"
+	"github.com/wukiQAQ/datausing/internal/storage"
 )
 
 // finding 是一条内容级检测结果：一帧含载荷报文对应一条。
@@ -39,6 +41,8 @@ type finding struct {
 	Hits   int       `json:"hits"`
 	Masked string    `json:"masked"`
 	Direct bool      `json:"direct,omitempty"`
+	// PayloadBytes 是这帧传输层载荷的字节数：既是成本指标，也说明 L1 只看正文
+	PayloadBytes int `json:"payload_bytes,omitempty"`
 }
 
 // stats 汇总一次检测的规模与分级分布，末尾打印。
@@ -94,6 +98,8 @@ func analyzePacket(raw []byte) (*finding, bool) {
 		Hits:   len(res.Hits),
 		Masked: preview(dlp.Mask(text, res), previewRunes),
 		Direct: res.Direct,
+		// 记录原始载荷长度（不是脱敏后）：说明这条结果"看了多少正文"
+		PayloadBytes: len(payload),
 	}
 	return f, true
 }
@@ -219,6 +225,63 @@ func printStats(w io.Writer, st stats, fs int) {
 		st.Frames, st.WithBody, st.Findings, fs, strings.Join(parts, " "), st.DurationMs)
 }
 
+// findingTypeKeys 把展示用的中文类别名转成存储/接口用的英文键。
+// 解析不出来的原样保留，宁可查到怪值也不要静默丢数据。
+func findingTypeKeys(labels []string) []string {
+	keys := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if typ, ok := dlp.ParseEntityType(label); ok {
+			keys = append(keys, string(typ))
+			continue
+		}
+		keys = append(keys, label)
+	}
+	return keys
+}
+
+// findingRetention 是落库的保留时长，与在线存储的默认策略保持一致（7 天）。
+const findingRetention = 7 * 24 * time.Hour
+
+// splitEndpoint 把 "ip:port" 拆成两段；解析不出端口时端口记 0（仅作展示）。
+func splitEndpoint(s string) (string, uint16) {
+	i := strings.LastIndex(s, ":")
+	if i < 0 {
+		return s, 0
+	}
+	port, err := strconv.Atoi(s[i+1:])
+	if err != nil || port < 0 || port > 65535 {
+		return s[:i], 0
+	}
+	return s[:i], uint16(port)
+}
+
+// persistFindings 把检测结果写入 SQLite，供 /api/v1/dlp/findings 等接口查询。
+// 让 CLI 直接落库而不是绕 HTTP：初赛演示要能"离线跑一遍 → 网页立刻能查"，
+// 一条命令完成，不需要额外起采集端。
+func persistFindings(dbPath string, findings []finding) (int, error) {
+	store, err := storage.OpenSQLiteStore(dbPath, findingRetention)
+	if err != nil {
+		return 0, err
+	}
+	defer store.Close()
+	n := 0
+	for _, f := range findings {
+		srcIP, srcPort := splitEndpoint(f.Src)
+		dstIP, dstPort := splitEndpoint(f.Dst)
+		rec := storage.DLPFinding{
+			Ts: f.Ts, SrcIP: srcIP, SrcPort: srcPort, DstIP: dstIP, DstPort: dstPort,
+			Proto: strings.ToLower(f.Proto), Level: f.Level, Score: f.Score,
+			Types: findingTypeKeys(f.Types), Hits: f.Hits, Masked: f.Masked, Model: "l1",
+			PayloadBytes: f.PayloadBytes, Direct: f.Direct,
+		}
+		if err := store.AppendFinding(rec); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // fatal 统一错误出口，便于 CLI 行为一致。
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "flowmask: "+format+"\n", args...)
@@ -232,6 +295,7 @@ func main() {
 		asJSON   = flag.Bool("json", false, "以 JSON 输出（findings 数组 + 统计），便于接入上层系统")
 		limit    = flag.Int("limit", 0, "最多输出多少条，0 表示不限")
 		quiet    = flag.Bool("quiet", false, "不逐条打印，只输出统计摘要")
+		dbPath   = flag.String("db", "", "把检测结果写入该 SQLite 文件，供 /api/v1/dlp/* 查询；为空则不落库")
 	)
 	flag.Parse()
 
@@ -249,6 +313,15 @@ func main() {
 	fs, st, err := detect(src, minLvl, *limit)
 	if err != nil {
 		fatal("%v", err)
+	}
+
+	// 先落库再输出：即使终端输出异常，证据也已经存进 SQLite。
+	if *dbPath != "" {
+		n, err := persistFindings(*dbPath, fs)
+		if err != nil {
+			fatal("写入检测结果失败：%v", err)
+		}
+		fmt.Fprintf(os.Stderr, "已写入 %d 条检测结果到 %s\n", n, *dbPath)
 	}
 
 	if *asJSON {
