@@ -1,4 +1,4 @@
-﻿# FlowMask · 网络流量敏感数据分级脱敏与防泄漏系统
+# FlowMask · 网络流量敏感数据分级脱敏与防泄漏系统
 
 > 福建省大学生数据安全大赛 · 自主命题（数据脱敏方向）参赛作品
 > 在自研的 [Linux 网络流量监控系统](docs/网络流量监控系统设计文档.md)（采集端 0.24.1）之上，扩展**内容级敏感数据识别、四级分级脱敏与可审计的检测链路**。
@@ -30,7 +30,7 @@
 | 演示数据生成 | 6 个真实 HTTP 场景（JSON/表单/CSV/明文/带密钥/对照）一键生成 pcap | ✅ |
 | 离线检测 CLI | `cmd/flowmask`：pcap → findings 表格/JSON + 分级统计 | ✅ |
 | TCP 重组 + HTTP 解析 | 跨包 body 还原、Content-Type 分派、gzip/分块 | 🚧 |
-| findings 落库 + API | `dlp_findings` 表、`/api/v1/dlp/findings`、`/api/v1/dlp/stats` | 🚧 |
+| findings 落库 + API | `dlp_findings` 表（SQLite/JSONL）、`/api/v1/dlp/findings`、`/stats`、`/export` | ✅ |
 | L2 语义识别 | bert-base-chinese 多标签（ONNX int8，CPU 5-20ms） | ⏳ |
 | L3 大模型复核 | 本地 Qwen2.5-3B（Ollama）只复核 L2/L3 样本，带超时熔断 | ⏳ |
 | 可视化看板 | 饼图/柱状/时间线 + 脱敏前后高亮对照 | ⏳ |
@@ -85,12 +85,25 @@ go run ./cmd/flowmask -pcap data/demo-dlp.pcap
 go run ./cmd/flowmask -pcap data/demo-dlp.pcap -level L3   # 只看高危
 go run ./cmd/flowmask -pcap data/demo-dlp.pcap -json       # 结构化输出
 
+# 3.5) 落库：把检测结果写进 SQLite，供在线接口/看板查询
+go run ./cmd/flowmask -db data/flowmask.db
+
 # 4) 用采集端回放同一份 pcap，看流量侧指标与网页
 go run ./cmd/netmon -source replay -replay-file data/demo-dlp.pcap -offline
 #    浏览器打开 http://127.0.0.1:8080（离线回放结束后进程保持存活）
 ```
 
-`flowmask -json` 的字段契约（后续 `/api/v1/dlp/findings` 复用同一套字段）：
+> 让网页/接口看到 DLP 结果：把采集端配置里的 `storage.sqlite_path` 指向 `data/flowmask.db`
+> （`[storage] storage = "sqlite"`），启动后即可查询下面的接口。
+
+| 在线接口 | 说明 |
+| --- | --- |
+| `GET /api/v1/dlp/findings?since=&level=&type=&src=&page=&page_size=` | 分页查询检测结果（新的在前，`page_size` 上限 100） |
+| `GET /api/v1/dlp/findings/{id}` | 单条详情：五元组、级别、命中类别、脱敏副本 |
+| `GET /api/v1/dlp/stats?since=&step=` | 看板数据：分级分布 + 类别 TopN + 时间线 |
+| `GET /api/v1/dlp/export?format=jsonl&since=` | 审计导出：首行 meta，其后一行一条（已脱敏） |
+
+`flowmask -json` 与 `/api/v1/dlp/findings` 共用同一套字段契约（`types` 是中文展示名，库内存英文键 `id_card`）：
 
 ```json
 {
