@@ -60,6 +60,19 @@ export const api = {
       headers: { "Content-Type": "application/json", "X-Operator-Id": operator || "web-console" },
     }),
   dynamicPolicy: () => request("/dynamic/policy"),
+
+  trafficFormats: () => request("/traffic/formats"),
+  trafficSampleUrl: `${BASE}/traffic/sample`,
+  importTraffic: (file, opts = {}) => {
+    const fd = new FormData();
+    fd.append("pcap", file);
+    const qs = new URLSearchParams();
+    if (opts.enableL2) qs.set("enable_l2", "true");
+    if (opts.enableL3) qs.set("enable_l3", "true");
+    if (opts.maskLevel) qs.set("mask_level", opts.maskLevel);
+    if (opts.minLevel) qs.set("min_level", opts.minLevel);
+    return request(`/traffic/import?${qs.toString()}`, { method: "POST", body: fd });
+  },
 };
 
 export const LEVEL_COLORS = { L3: "#dc2626", L2: "#ea580c", L1: "#d97706", SAFE: "#0d9488" };

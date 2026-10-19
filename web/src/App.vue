@@ -1,14 +1,16 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, ref } from "vue";
 import DetectView from "./views/DetectView.vue";
 import TasksView from "./views/TasksView.vue";
 import StatsView from "./views/StatsView.vue";
 import RulesView from "./views/RulesView.vue";
 import DynamicView from "./views/DynamicView.vue";
+import TrafficView from "./views/TrafficView.vue";
 import { api } from "./api";
 
 const tabs = [
   { key: "detect", label: "即时检测 · 左右对照", comp: DetectView },
+  { key: "traffic", label: "流量导入 · pcap", comp: TrafficView },
   { key: "tasks", label: "任务与审计链", comp: TasksView },
   { key: "stats", label: "统计看板", comp: StatsView },
   { key: "rules", label: "识别规则", comp: RulesView },
