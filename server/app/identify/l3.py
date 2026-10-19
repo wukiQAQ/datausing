@@ -89,8 +89,56 @@ class OllamaGuardClassifier:
         return GuardVerdict(risk=risk, reason=str(parsed.get("reason", ""))[:200], model=self.model)
 
 
+class HttpJudgeClassifier:
+    """调用本仓 ``l3_service`` 的 ``/v1/judge`` 的护栏客户端。
+
+    与 Ollama 版的区别：判定逻辑（prompt 模板、Qwen3Guard 原生输出解析）都在服务侧，
+    主服务只发 ``{"text": ...}``、收归一化的 ``{"risk","reason","model","degraded"}``，
+    这样换模型/换运行时不用改主服务。
+    """
+
+    name = "l3-qwen3guard-http"
+
+    def __init__(self, endpoint: str, model: str, timeout_s: float) -> None:
+        self.endpoint = endpoint
+        self.model = model
+        self.timeout_s = timeout_s
+
+    def available(self) -> bool:
+        return bool(self.endpoint)
+
+    def judge(self, text: str) -> GuardVerdict | None:
+        payload = {"text": text[:4000]}
+        request = urllib.request.Request(
+            self.endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+            return None
+        if not isinstance(body, dict) or body.get("degraded"):
+            return None
+        risk = str(body.get("risk", "")).strip()
+        if risk.lower() not in {"safe", "controversial", "unsafe"}:
+            return None
+        return GuardVerdict(
+            risk=risk,
+            reason=str(body.get("reason", ""))[:200],
+            model=str(body.get("model") or self.model),
+        )
+
+
 def build_guard_classifier(settings: Settings) -> GuardClassifier | None:
-    """按配置构造 L3 客户端；未启用时返回 None。"""
+    """按配置构造 L3 客户端；未启用时返回 None。
+
+    ``L3_MODE`` 决定调用方式：``http``（本仓 l3_service）/ ``ollama``（/api/generate）。
+    """
     if not settings.enable_l3:
         return None
-    return OllamaGuardClassifier(settings.l3_endpoint, settings.l3_model, settings.l3_timeout_s)
+    if settings.l3_mode == "ollama":
+        return OllamaGuardClassifier(settings.l3_endpoint, settings.l3_model, settings.l3_timeout_s)
+    return HttpJudgeClassifier(settings.l3_endpoint, settings.l3_model, settings.l3_timeout_s)

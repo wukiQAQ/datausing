@@ -1,4 +1,4 @@
-﻿"""三级协同识别流水线。
+"""三级协同识别流水线。
 
 一条 Segment 的处理顺序：L1 规则 →（可选）L2 语义 →（可选）L3 护栏 → 评分分级 → 脱敏。
 设计要点：
@@ -322,7 +322,10 @@ class DetectionPipeline:
             else:
                 chain.append("l3")
                 reason = verdict.reason or None
-                if verdict.level.severity > result.level.severity:
+                # L3 的定位是「复核 + 解释」，不是重新分级：
+                # 只有判定 Unsafe 时才升级到高危；Controversial/Safe 不改级别，
+                # 避免大模型把低危样本抬成中危（mock 与真模型都验证过这条更稳）。
+                if verdict.level == Level.HIGH and result.level.severity < Level.HIGH.severity:
                     result.level = verdict.level
                 result.extra_evidence.append(
                     {

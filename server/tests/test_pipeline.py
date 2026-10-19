@@ -196,3 +196,27 @@ def test_l2_context_uses_document_text() -> None:
         document, DetectOptions(enable_l2=True)
     )
     assert all(finding.level == Level.SAFE for finding in report.findings)
+
+
+class ControversialGuard:
+    """返回 Controversial 的护栏：按新口径不应把低危抬成中危。"""
+
+    name = "controversial-guard"
+
+    def available(self) -> bool:
+        return True
+
+    def judge(self, text: str) -> GuardVerdict | None:
+        return GuardVerdict(risk="Controversial", reason="看起来像个人信息", model="fake-qwen")
+
+
+def test_l3_controversial_does_not_raise_level() -> None:
+    # 邮箱类样本 L1 判 L1，护栏说 Controversial 也不该升级（只记录证据与理由）
+    document = parse_text("联系人：zhang.san@example.com")
+    report = DetectionPipeline(guard=ControversialGuard()).analyze_document(
+        document, DetectOptions(enable_l3=True)
+    )
+    finding = report.findings[0]
+    assert finding.level.value == "L1"
+    assert "l3" in finding.model_chain
+    assert finding.reason == "看起来像个人信息"

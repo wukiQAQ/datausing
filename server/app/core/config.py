@@ -1,4 +1,4 @@
-"""运行配置。
+﻿"""运行配置。
 
 所有配置项都可以用 ``FLOWMASK_`` 前缀的环境变量覆盖，默认值面向本机演示：
 数据写在 ``server/data``，不依赖任何外部服务；L2/L3 默认关闭（模型未接入时
@@ -58,6 +58,8 @@ class Settings:
     l2_endpoint: str
     l3_endpoint: str
     l3_model: str
+    # L3 调用方式：http（本仓 l3_service）/ ollama（/api/generate）
+    l3_mode: str
     l2_timeout_s: float
     l3_timeout_s: float
     max_upload_mb: int
@@ -79,8 +81,9 @@ class Settings:
             enable_l2=_env_bool("ENABLE_L2", False),
             enable_l3=_env_bool("ENABLE_L3", False),
             l2_endpoint=_env_str("L2_ENDPOINT", "http://127.0.0.1:8091/v1/classify"),
-            l3_endpoint=_env_str("L3_ENDPOINT", "http://127.0.0.1:11434/api/generate"),
-            l3_model=_env_str("L3_MODEL", "qwen3guard-stream-0.6b"),
+            l3_endpoint=_env_str("L3_ENDPOINT", "http://127.0.0.1:8092/v1/judge"),
+            l3_model=_env_str("L3_MODEL", "qwen3guard-gen-0.6b"),
+            l3_mode=_env_str("L3_MODE", "http").strip().lower(),
             l2_timeout_s=_env_float("L2_TIMEOUT_S", 0.5),
             l3_timeout_s=_env_float("L3_TIMEOUT_S", 5.0),
             max_upload_mb=_env_int("MAX_UPLOAD_MB", 20),

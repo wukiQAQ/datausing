@@ -64,11 +64,34 @@ class MockSemanticAdapter:
         return hits
 
 
-def build_pipeline(use_mock_l2: bool = False) -> DetectionPipeline:
-    """按评测模式构造流水线：默认按配置（L1 only），mock 模式注入内置 L2 后端。"""
-    if not use_mock_l2:
+class MockGuardAdapter:
+    """把 L3 服务的 MockGuardBackend 包成 ``GuardClassifier``，用于离线对比 L3 增益。"""
+
+    name = "l3-mock"
+
+    def __init__(self) -> None:
+        from l3_service.backends import MockGuardBackend  # 同仓可选包，延迟导入
+
+        self._backend = MockGuardBackend()
+
+    def available(self) -> bool:
+        return True
+
+    def judge(self, text: str):
+        from .identify.l3 import GuardVerdict
+
+        result = self._backend.judge(text)
+        return GuardVerdict(risk=result.risk, reason=result.reason, model=result.model)
+
+
+def build_pipeline(use_mock_l2: bool = False, use_mock_l3: bool = False) -> DetectionPipeline:
+    """按评测模式构造流水线：默认按配置（L1 only），mock 模式注入内置 L2/L3 后端。"""
+    if not use_mock_l2 and not use_mock_l3:
         return DetectionPipeline.from_settings(get_settings())
-    return DetectionPipeline(semantic=MockSemanticAdapter())
+    return DetectionPipeline(
+        semantic=MockSemanticAdapter() if use_mock_l2 else None,
+        guard=MockGuardAdapter() if use_mock_l3 else None,
+    )
 
 _PARSERS: dict[str, Callable[[str], Any]] = {
     "text": parse_text,
@@ -388,30 +411,37 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
     lines.append("")
     compare = meta.get("compare")
     if compare:
-        l1, l2 = compare["l1"], compare["l2"]
-        lines.append("## 5.1 多模型协同对比（L1 only vs L1 + L2 mock）")
+        labels = {"l1": "L1 only", "l2": "L1 + L2（mock）", "l3": "L1 + L2 + L3（mock）"}
+        modes = [key for key in ("l1", "l2", "l3") if key in compare]
+        if "l2" not in modes:  # 只对比 L3 时，标签不要写 L2
+            labels["l3"] = "L1 + L3（mock）"
+        heads = [labels[key] for key in modes]
+        lines.append("## 5.1 多模型协同对比（" + " vs ".join(heads) + "）")
         lines.append("")
-        lines.append("| 指标 | L1 only | L1 + L2（mock） | 变化 |")
-        lines.append("| --- | ---: | ---: | ---: |")
+        lines.append("| 指标 | " + " | ".join(heads) + " | 变化 |")
+        lines.append("| --- | " + " | ".join("---:" for _ in heads) + " | ---: |")
 
         def delta(before: float, after: float, suffix: str = "") -> str:
             diff = after - before
             arrow = "↑" if diff > 1e-9 else ("↓" if diff < -1e-9 else "→")
             return f"{arrow} {diff * 100:+.1f}{suffix}"
 
-        rows = [
-            ("分级准确率", l1["accuracy"], l2["accuracy"], ""),
-            ("分级 Macro-F1", l1["macro_f1"], l2["macro_f1"], ""),
-            ("类别 Micro-F1", l1["type_micro"]["f1"], l2["type_micro"]["f1"], ""),
-            ("高危漏检率", l1["critical_miss_rate"], l2["critical_miss_rate"], ""),
-            ("安全误报率", l1["false_positive_rate"], l2["false_positive_rate"], ""),
+        metric_rows = [
+            ("分级准确率", lambda s: s["accuracy"]),
+            ("分级 Macro-F1", lambda s: s["macro_f1"]),
+            ("类别 Micro-F1", lambda s: s["type_micro"]["f1"]),
+            ("高危漏检率", lambda s: s["critical_miss_rate"]),
+            ("安全误报率", lambda s: s["false_positive_rate"]),
         ]
-        for name, before, after, suffix in rows:
-            lines.append(f"| {name} | {before * 100:.1f}% | {after * 100:.1f}% | {delta(before, after, suffix)} |")
+        for name, pick in metric_rows:
+            values = [pick(compare[key]) * 100 for key in modes]
+            cells = " | ".join(f"{value:.1f}%" for value in values)
+            lines.append(f"| {name} | {cells} | {delta(values[0], values[-1])} |")
         lines.append("")
         lines.append(
-            "- L2(mock) 是**词表+上下文标记的占位实现**，用于验证「语义复核/示例数据判定」这条链路的价值；"
-            "接真 RoBERTa 权重后复跑 `--enable-l2`，这张表就是模型增益的实测依据。"
+            "- L2/L3(mock) 是**占位实现**（L2 词表+上下文标记、L3 启发式护栏），用于验证"
+            "「语义复核 / 示例数据判定 / 大模型解释」这条链路的增益；接真模型后分别用 "
+            "`--enable-l2`、`--enable-l3` 复跑同一套指标即可对比。"
         )
         lines.append("")
 
@@ -441,8 +471,14 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
 
 def _mode_label(args: argparse.Namespace) -> str:
     """把命令行开关翻译成报告里的模式名。"""
+    if args.compare_l3 and args.compare_l2:
+        return "L1 only vs L1 + L2(mock) vs L1 + L2 + L3(mock)"
+    if args.compare_l3:
+        return "L1 only vs L1 + L3(mock)"
     if args.compare_l2:
         return "L1 only vs L1 + L2(mock)"
+    if args.enable_l3_mock:
+        return "L1 + L3(mock)"
     if args.enable_l2_mock:
         return "L1 + L2(mock)"
     parts = ["L1"]
@@ -473,20 +509,49 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="同时跑 L1 only 与 L1+L2(mock)，在报告里输出对比表",
     )
+    parser.add_argument(
+        "--enable-l3-mock",
+        action="store_true",
+        help="用内置 mock L3 后端（启发式护栏，无需权重）跑复核链路",
+    )
+    parser.add_argument(
+        "--compare-l3",
+        action="store_true",
+        help="在对比表里加入 L3(mock) 一列（可与 --compare-l2 叠加）",
+    )
     args = parser.parse_args(argv)
 
     compare: dict[str, Any] | None = None
-    if args.compare_l2:
+    if args.compare_l2 or args.compare_l3:
         base_summary, _ = evaluate(args.dataset, options=DetectOptions(), pipeline=build_pipeline())
-        l2_summary, details = evaluate(
-            args.dataset, options=DetectOptions(enable_l2=True), pipeline=build_pipeline(use_mock_l2=True)
-        )
-        summary = l2_summary
-        compare = {"l1": base_summary, "l2": l2_summary}
+        compare = {"l1": base_summary}
+        summary, details = base_summary, []
+        if args.compare_l2:
+            l2_summary, details = evaluate(
+                args.dataset,
+                options=DetectOptions(enable_l2=True),
+                pipeline=build_pipeline(use_mock_l2=True),
+            )
+            compare["l2"] = l2_summary
+            summary = l2_summary
+        if args.compare_l3:
+            l3_summary, details = evaluate(
+                args.dataset,
+                options=DetectOptions(enable_l2=args.compare_l2, enable_l3=True),
+                pipeline=build_pipeline(use_mock_l2=args.compare_l2, use_mock_l3=True),
+            )
+            compare["l3"] = l3_summary
+            summary = l3_summary
     else:
-        use_mock = args.enable_l2_mock
-        options = DetectOptions(enable_l2=args.enable_l2 or use_mock, enable_l3=args.enable_l3)
-        summary, details = evaluate(args.dataset, options=options, pipeline=build_pipeline(use_mock))
+        use_mock_l2 = args.enable_l2_mock
+        use_mock_l3 = args.enable_l3_mock
+        options = DetectOptions(
+            enable_l2=args.enable_l2 or use_mock_l2,
+            enable_l3=args.enable_l3 or use_mock_l3,
+        )
+        summary, details = evaluate(
+            args.dataset, options=options, pipeline=build_pipeline(use_mock_l2, use_mock_l3)
+        )
 
     from datetime import datetime
 
@@ -494,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
         "dataset": str(args.dataset),
         "mode": _mode_label(args),
-        "command": "cd server && python -m app.evaluate --compare-l2",
+        "command": "cd server && python -m app.evaluate --compare-l2 --compare-l3",
         "compare": compare,
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
