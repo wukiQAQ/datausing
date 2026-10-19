@@ -125,3 +125,23 @@ def test_build_backend_modes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     monkeypatch.setenv("FLOWMASK_L3_MODE", "auto")
     monkeypatch.setenv("FLOWMASK_L3_MODEL_DIR", str(tmp_path / "missing"))
     assert isinstance(build_backend(), MockGuardBackend)
+
+
+def test_resolve_dtype(monkeypatch) -> None:
+    """FLOWMASK_L3_DTYPE 覆盖权重类型；auto 时 GPU 用 bf16、CPU 用 fp32。"""
+    from types import SimpleNamespace
+
+    from l3_service.backends import _resolve_dtype
+
+    fake_torch = SimpleNamespace(
+        bfloat16="bf16", float16="fp16", float32="fp32"
+    )
+    monkeypatch.delenv("FLOWMASK_L3_DTYPE", raising=False)
+    assert _resolve_dtype(fake_torch, "cpu") == "fp32"
+    assert _resolve_dtype(fake_torch, "cuda") == "bf16"
+    monkeypatch.setenv("FLOWMASK_L3_DTYPE", "bf16")
+    assert _resolve_dtype(fake_torch, "cpu") == "bf16"
+    monkeypatch.setenv("FLOWMASK_L3_DTYPE", "fp16")
+    assert _resolve_dtype(fake_torch, "cuda") == "fp16"
+    monkeypatch.setenv("FLOWMASK_L3_DTYPE", "unknown")
+    assert _resolve_dtype(fake_torch, "cpu") == "fp32"

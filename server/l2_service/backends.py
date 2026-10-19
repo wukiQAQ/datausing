@@ -213,6 +213,11 @@ class OnnxBackend:
         self._labels = json.loads(labels_path.read_text(encoding="utf-8"))
         self._tokenizer = Tokenizer.from_file(str(self.model_dir / "tokenizer.json"))
         self._tokenizer.enable_truncation(max_length=self.max_length)
+        # 训练侧保存的 tokenizer.json 可能自带 padding，这里关掉，统一由本类按 batch 补位并对齐 attention。
+        try:
+            self._tokenizer.no_padding()
+        except (AttributeError, ValueError):  # pragma: no cover - 老版本 tokenizers
+            pass
         self._session = onnxruntime.InferenceSession(
             str(model_path), providers=["CPUExecutionProvider"]
         )
@@ -242,7 +247,9 @@ class OnnxBackend:
         for row, enc in enumerate(encodings):
             ids = enc.ids[:max_len]
             input_ids[row, : len(ids)] = ids
-            attention[row, : len(ids)] = 1
+            # 用 tokenizer 给出的 mask（补齐位是 0）；部分 tokenizer 不含该字段时退回全 1。
+            mask = list(getattr(enc, "attention_mask", None) or [1] * len(enc.ids))[:max_len]
+            attention[row, : len(mask)] = mask
         feeds = {"input_ids": input_ids, "attention_mask": attention}
         input_names = {i.name for i in self._session.get_inputs()}
         if "token_type_ids" in input_names:

@@ -58,3 +58,9 @@ server/l2_models/
 web/node_modules/
 web/dist/
 server/models/
+# 服务端本地推理/训练产物（权重、日志、临时对比结果）
+server/_*.err
+server/_*.log
+server/_*.pid
+server/_l2_*.json
+server/_l3_*.json

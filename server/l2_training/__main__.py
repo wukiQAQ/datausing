@@ -57,7 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
     dataset.add_argument("--out", default="data/l2_training.jsonl")
     dataset.add_argument("--count", type=int, default=800)
     dataset.add_argument("--seed", type=int, default=42)
-    dataset.add_argument("--with-eval", default="eval/dataset.jsonl", help="合并人工评测集，空串表示不合并")
+    dataset.add_argument(
+        "--with-eval",
+        default="",
+        help="合并人工评测集（仅用于调参实验）；默认不合并，避免评测集泄漏进训练集",
+    )
     dataset.set_defaults(func=_cmd_dataset)
 
     inspect = sub.add_parser("inspect", help="不依赖 torch 的数据体检")

@@ -1,4 +1,4 @@
-﻿"""评测：在自建标注集上算分级准确率、类别 P/R/F1、高危漏检率与时延。
+"""评测：在自建标注集上算分级准确率、类别 P/R/F1、高危漏检率与时延。
 
 用法（在 `server/` 目录下）::
 
@@ -64,6 +64,23 @@ class MockSemanticAdapter:
         return hits
 
 
+class HttpSemanticAdapter:
+    """把真实 L2 HTTP 服务包成 ``SemanticClassifier``：用于「mock vs 真模型」同口径对比。"""
+
+    name = "l2-http"
+
+    def __init__(self, endpoint: str, timeout_s: float = 10.0) -> None:
+        from .identify.l2 import HttpSemanticClassifier
+
+        self._inner = HttpSemanticClassifier(endpoint, timeout_s)
+
+    def available(self) -> bool:
+        return self._inner.available()
+
+    def predict(self, text: str) -> list[Any]:
+        return self._inner.predict(text)
+
+
 class MockGuardAdapter:
     """把 L3 服务的 MockGuardBackend 包成 ``GuardClassifier``，用于离线对比 L3 增益。"""
 
@@ -84,8 +101,17 @@ class MockGuardAdapter:
         return GuardVerdict(risk=result.risk, reason=result.reason, model=result.model)
 
 
-def build_pipeline(use_mock_l2: bool = False, use_mock_l3: bool = False) -> DetectionPipeline:
-    """按评测模式构造流水线：默认按配置（L1 only），mock 模式注入内置 L2/L3 后端。"""
+def build_pipeline(
+    use_mock_l2: bool = False,
+    use_mock_l3: bool = False,
+    l2_endpoint: str = "",
+) -> DetectionPipeline:
+    """按评测模式构造流水线：默认按配置（L1 only），mock/真实 HTTP 后端按需注入。"""
+    if l2_endpoint:
+        return DetectionPipeline(
+            semantic=HttpSemanticAdapter(l2_endpoint),
+            guard=MockGuardAdapter() if use_mock_l3 else None,
+        )
     if not use_mock_l2 and not use_mock_l3:
         return DetectionPipeline.from_settings(get_settings())
     return DetectionPipeline(
@@ -411,7 +437,10 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
     lines.append("")
     compare = meta.get("compare")
     if compare:
-        labels = {"l1": "L1 only", "l2": "L1 + L2（mock）", "l3": "L1 + L2 + L3（mock）"}
+        l2_label = "L1 + L2（真模型）" if meta.get("l2_endpoint") else "L1 + L2（mock）"
+        labels = {"l1": "L1 only", "l2": l2_label, "l3": l2_label + " + L3（mock）"}
+        if meta.get("compare_labels"):
+            labels.update(meta["compare_labels"])
         modes = [key for key in ("l1", "l2", "l3") if key in compare]
         if "l2" not in modes:  # 只对比 L3 时，标签不要写 L2
             labels["l3"] = "L1 + L3（mock）"
@@ -421,10 +450,10 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
         lines.append("| 指标 | " + " | ".join(heads) + " | 变化 |")
         lines.append("| --- | " + " | ".join("---:" for _ in heads) + " | ---: |")
 
-        def delta(before: float, after: float, suffix: str = "") -> str:
-            diff = after - before
+        def delta(before: float, after: float) -> str:
+            diff = after - before  # 入参已经是百分数
             arrow = "↑" if diff > 1e-9 else ("↓" if diff < -1e-9 else "→")
-            return f"{arrow} {diff * 100:+.1f}{suffix}"
+            return f"{arrow} {diff:+.1f}%"
 
         metric_rows = [
             ("分级准确率", lambda s: s["accuracy"]),
@@ -439,10 +468,20 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
             lines.append(f"| {name} | {cells} | {delta(values[0], values[-1])} |")
         lines.append("")
         lines.append(
-            "- L2/L3(mock) 是**占位实现**（L2 词表+上下文标记、L3 启发式护栏），用于验证"
-            "「语义复核 / 示例数据判定 / 大模型解释」这条链路的增益；接真模型后分别用 "
-            "`--enable-l2`、`--enable-l3` 复跑同一套指标即可对比。"
+            "- **时延口径**：对比表里带 L2 的列，单条时延含一次 HTTP 调用（本机回环，约 10–60ms），"
+            "所以「单条时延」行应看 L1 only 列；纯 L1（规则 + 校验）时延见上方主表。"
         )
+        if meta.get("l2_endpoint"):
+            lines.append(
+                f"- L2 列为**真实模型**：`{meta['l2_endpoint']}`（bert-base-chinese 多标签微调 → ONNX int8，"
+                "困难负例 30% 训练，benign 判定用于压制「示例/测试数据」误报）。"
+            )
+        else:
+            lines.append(
+                "- L2/L3(mock) 是**占位实现**（L2 词表+上下文标记、L3 启发式护栏），用于验证"
+                "「语义复核 / 示例数据判定 / 大模型解释」这条链路的增益；接真模型后用 "
+                "`--l2-endpoint`、`--enable-l3` 复跑同一套指标即可对比。"
+            )
         lines.append("")
 
     lines.append("## 6. 口径与局限（如实说明）")
@@ -471,12 +510,13 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
 
 def _mode_label(args: argparse.Namespace) -> str:
     """把命令行开关翻译成报告里的模式名。"""
+    l2_name = "L2(真模型)" if args.l2_endpoint else "L2(mock)"
     if args.compare_l3 and args.compare_l2:
-        return "L1 only vs L1 + L2(mock) vs L1 + L2 + L3(mock)"
+        return f"L1 only vs L1 + {l2_name} vs L1 + {l2_name} + L3(mock)"
     if args.compare_l3:
         return "L1 only vs L1 + L3(mock)"
     if args.compare_l2:
-        return "L1 only vs L1 + L2(mock)"
+        return f"L1 only vs L1 + {l2_name}"
     if args.enable_l3_mock:
         return "L1 + L3(mock)"
     if args.enable_l2_mock:
@@ -507,7 +547,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--compare-l2",
         action="store_true",
-        help="同时跑 L1 only 与 L1+L2(mock)，在报告里输出对比表",
+        help="同时跑 L1 only 与 L1+L2，在报告里输出对比表",
+    )
+    parser.add_argument(
+        "--l2-endpoint",
+        default="",
+        help="配合 --compare-l2：用真实 L2 服务（如 http://127.0.0.1:8093/v1/classify）替代 mock 后端",
     )
     parser.add_argument(
         "--enable-l3-mock",
@@ -530,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
             l2_summary, details = evaluate(
                 args.dataset,
                 options=DetectOptions(enable_l2=True),
-                pipeline=build_pipeline(use_mock_l2=True),
+                pipeline=build_pipeline(use_mock_l2=not args.l2_endpoint, l2_endpoint=args.l2_endpoint),
             )
             compare["l2"] = l2_summary
             summary = l2_summary
@@ -538,7 +583,11 @@ def main(argv: list[str] | None = None) -> int:
             l3_summary, details = evaluate(
                 args.dataset,
                 options=DetectOptions(enable_l2=args.compare_l2, enable_l3=True),
-                pipeline=build_pipeline(use_mock_l2=args.compare_l2, use_mock_l3=True),
+                pipeline=build_pipeline(
+                    use_mock_l2=args.compare_l2 and not args.l2_endpoint,
+                    use_mock_l3=True,
+                    l2_endpoint=args.l2_endpoint,
+                ),
             )
             compare["l3"] = l3_summary
             summary = l3_summary
@@ -555,11 +604,15 @@ def main(argv: list[str] | None = None) -> int:
 
     from datetime import datetime
 
+    command = "cd server && python -m app.evaluate --compare-l2 --compare-l3"
+    if args.l2_endpoint:
+        command += f" --l2-endpoint {args.l2_endpoint}"
     meta = {
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
         "dataset": str(args.dataset),
         "mode": _mode_label(args),
-        "command": "cd server && python -m app.evaluate --compare-l2 --compare-l3",
+        "command": command,
+        "l2_endpoint": args.l2_endpoint,
         "compare": compare,
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)

@@ -155,3 +155,20 @@ def test_cli_dataset_and_inspect(tmp_path: Path) -> None:
     assert cli_main(["dataset", "--out", str(target), "--count", "40", "--with-eval", ""]) == 0
     assert target.exists()
     assert cli_main(["inspect", "--dataset", str(target), "--min-rows", "20"]) == 0
+
+
+def test_synthetic_hard_negatives() -> None:
+    """benign 里必须有「带示例标记 + 真敏感形态」的困难负例，且覆盖银行卡/密钥类别。"""
+    from l2_training.dataset import synthetic_examples
+
+    examples = synthetic_examples(200, seed=7)
+    benign = [ex for ex in examples if ex.labels.get("benign")]
+    assert benign, "没有 benign 样本"
+    ratio = len(benign) / len(examples)
+    assert 0.2 <= ratio <= 0.4, f"benign 占比 {ratio:.2f} 应在 20%~40%"
+    hard = [
+        ex
+        for ex in benign
+        if ex.labels.get("bank_card") or ex.labels.get("secret") or ex.labels.get("id_card")
+    ]
+    assert hard, "缺少带敏感形态的困难负例"

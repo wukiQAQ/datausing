@@ -38,9 +38,25 @@ def build_parser() -> argparse.ArgumentParser:
 def _load_labels(args: argparse.Namespace, config: dict) -> list[str]:
     if args.labels:
         return [item.strip() for item in args.labels.split(",") if item.strip()]
+    # 训练脚本会把类别顺序写成 labels.json，优先用它：
+    # 自己微调出来的 config.id2label 可能是「类别名 -> 序号」，不能假定键是数字。
+    labels_file = args.model_dir / "labels.json"
+    if labels_file.is_file():
+        try:
+            data = json.loads(labels_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, list) and data:
+            return [str(item) for item in data]
     id2label = config.get("id2label") or {}
     if id2label:
-        return [id2label[str(index)] for index in sorted(map(int, id2label))]
+        try:
+            return [id2label[str(index)] for index in sorted(int(key) for key in id2label)]
+        except (KeyError, ValueError):
+            raise SystemExit(
+                "config.json 的 id2label 不是「序号 -> 类别名」格式；"
+                "请在模型目录补 labels.json，或用 --labels 指定类别顺序"
+            ) from None
     raise SystemExit("无法确定类别顺序：请用 --labels 或保证 config.json 里有 id2label")
 
 
@@ -73,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         output_names=["logits"],
         dynamic_axes={"input_ids": {0: "batch", 1: "seq"}, "attention_mask": {0: "batch", 1: "seq"}},
         opset_version=17,
+        # 用旧版追踪式导出器：动态量化（quantize_dynamic）对 dynamo 导出的
+        # MatMul/外部权重格式不兼容，会报 ShapeInferenceError。
+        dynamo=False,
     )
     print(f"导出完成：{onnx_path}")
 

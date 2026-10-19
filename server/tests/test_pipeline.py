@@ -161,7 +161,7 @@ def test_l2_benign_suppresses_phone_level() -> None:
 def test_l2_benign_does_not_suppress_direct_with_low_confidence() -> None:
     """证件号是直达高危：L2 置信度不够高时不许压制（宁误报勿漏报）。"""
     text = "身份证 11010519491231002X"
-    finding = DetectionPipeline(semantic=BenignSemantic(0.8)).analyze_text(
+    finding = DetectionPipeline(semantic=BenignSemantic(0.7)).analyze_text(
         text, DetectOptions(enable_l2=True)
     )
     assert finding is not None
@@ -220,3 +220,17 @@ def test_l3_controversial_does_not_raise_level() -> None:
     assert finding.level.value == "L1"
     assert "l3" in finding.model_chain
     assert finding.reason == "看起来像个人信息"
+
+
+def test_benign_threshold_env_override(monkeypatch) -> None:
+    """阈值可用环境变量覆盖：调参/消融实验不必改代码。"""
+    text = "手机 13800138000"
+    finding = DetectionPipeline(semantic=BenignSemantic(0.8)).analyze_text(
+        text, DetectOptions(enable_l2=True)
+    )
+    assert finding is not None and finding.level == Level.SAFE  # 0.8 > 默认 0.65
+    monkeypatch.setenv("FLOWMASK_L2_BENIGN_MIN", "0.9")
+    finding = DetectionPipeline(semantic=BenignSemantic(0.8)).analyze_text(
+        text, DetectOptions(enable_l2=True)
+    )
+    assert finding is not None and finding.level.value == "L2"  # 阈值抬高后不再压制

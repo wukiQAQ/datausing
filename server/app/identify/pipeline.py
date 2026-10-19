@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from dataclasses import dataclass, field, replace
 
@@ -31,11 +32,32 @@ L2_MIN_CONFIDENCE = 0.70
 L2_SCORE_BONUS = 0.05
 # L2 判"非敏感"的最小置信度，以及据此的分数压制力度：
 # 压制是乘性的，0.9 上限保证"很确信是示例数据"时能把 L2 级形似号码压回 SAFE。
-L2_BENIGN_MIN_CONFIDENCE = 0.75
+#: benign 压制阈值：在 75 条留出集上调参（0.65/0.75 时误报 25.9%→0%，高危漏检保持 0%）
+L2_BENIGN_MIN_CONFIDENCE = 0.65
 L2_BENIGN_MAX_PENALTY = 0.90
 # 高危直达类（证件/银行卡/密钥）默认不压制（宁误报勿漏报）；
 # 只有当 L2 非常确信"这是示例数据"时才允许压制，阈值更高。
-L2_BENIGN_DIRECT_MIN_CONFIDENCE = 0.90
+#: 直达高危（证件/卡/密钥）要求的 benign 置信度更高，避免一句“示例”把真泄露放过去
+L2_BENIGN_DIRECT_MIN_CONFIDENCE = 0.75
+
+
+def _env_float(name: str, default: float) -> float:
+    """读取阈值环境变量（评测调参用），非法值退回默认。"""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _benign_threshold() -> float:
+    return _env_float("FLOWMASK_L2_BENIGN_MIN", L2_BENIGN_MIN_CONFIDENCE)
+
+
+def _direct_benign_threshold() -> float:
+    return _env_float("FLOWMASK_L2_BENIGN_DIRECT_MIN", L2_BENIGN_DIRECT_MIN_CONFIDENCE)
 AMBIGUOUS_MIN = 0.25
 AMBIGUOUS_MAX = 0.85
 
@@ -300,9 +322,9 @@ class DetectionPipeline:
                     if benign:
                         strongest = max(hit.confidence for hit in benign)
                         threshold = (
-                            L2_BENIGN_DIRECT_MIN_CONFIDENCE
+                            _direct_benign_threshold()
                             if result.direct
-                            else L2_BENIGN_MIN_CONFIDENCE
+                            else _benign_threshold()
                         )
                         if strongest >= threshold:
                             result = _apply_l2_benign(result, strongest)

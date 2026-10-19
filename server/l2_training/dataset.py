@@ -198,13 +198,68 @@ def _render_sensitive(label: str, rng: random.Random) -> str:
     return rng.choice(_CONTEXTS).format(v=value)
 
 
+_BENIGN_MARKERS_ZH: tuple[str, ...] = (
+    "示例",
+    "样例",
+    "测试数据",
+    "演示数据",
+    "占位数据",
+    "mock 数据",
+    "假数据",
+    "虚构数据",
+    "仅供联调",
+    "压测样例",
+    "脱敏样例",
+    "联调测试",
+)
+_BENIGN_TOPICS: tuple[str, ...] = (
+    "本周完成接口联调，下周进入压测阶段，暂无风险。",
+    "本页内容全部为虚构示例，仅用于功能演示。",
+    "本系统支持文档上传、分级识别与审计导出，全部本地运行。",
+    "今晚 22:00-23:00 进行数据库例行备份，服务不受影响。",
+    "下季度重点是提升识别准确率与页面响应速度。",
+)
+
+
+def _hard_benign_text(rng: random.Random) -> str:
+    """带示例标记、正文里却确实出现敏感值的困难负例。
+
+    真实文档里常见「示例数据：手机号 138…」这类写法：只靠规则会把演示材料
+    误判为泄露，模型必须学会让 benign 压过敏感特征。
+    """
+    marker = rng.choice(_BENIGN_MARKERS_ZH)
+    phone = make_phone(rng)
+    id_card = make_id_card(rng)
+    email = make_email(rng)
+    body = rng.choice(
+        (
+            f'{{"name": "张三", "phone": "{phone}", "id_card": "{id_card}"}}',
+            f"username=demo&email={email}&phone={phone}",
+            f"name,phone\n李四,{phone}",
+            f"客户张三，电话 {phone}，身份证 {id_card}",
+            f"api_key=sk-EXAMPLE{''.join(rng.choice('ABCDEFGH0123456789') for _ in range(12))}",
+            f"银行卡 {make_bank_card(rng)} 用于支付联调",
+            f"password=P@ssw0rd_Example，请勿用于生产",
+            f"token=eyJhbGciOiJIUzI1NiJ9.{phone}.signature-preview",
+            f"身份证占位符 {{ID_PLACEHOLDER}} 与手机 {{PHONE_PLACEHOLDER}}",
+        )
+    )
+    tail = rng.choice(("不是真实数据", "仅用于联调", "请勿用于生产", "文档占位", "虚构内容",
+                       "公开测试数据", "压测假号码", "JSON 占位示例"))
+    return f"{marker}：{body}（{tail}）"
+
+
 def synthetic_examples(count: int = 800, seed: int = 42) -> list[Example]:
-    """生成可复现的自举数据集：约 70% 单标签、10% 组合、20% benign。"""
+    """生成可复现的自举数据集：约 60% 单标签、10% 组合、30% benign。
+
+    benign 里六成是「带示例标记 + 真敏感形态」的困难负例——这是压低误报的关键，
+    占位的普通说明文字教不会模型该压过什么。
+    """
     if count <= 0:
         raise ValueError("count 必须为正")
     rng = random.Random(seed)
     examples: list[Example] = []
-    benign_quota = max(1, int(count * 0.2))
+    benign_quota = max(1, int(count * 0.3))
     combo_quota = max(1, int(count * 0.1))
     single_quota = count - benign_quota - combo_quota
 
@@ -225,15 +280,17 @@ def synthetic_examples(count: int = 800, seed: int = 42) -> list[Example]:
         examples.append(Example(text="订单信息：" + "，".join(values), labels=labels))
 
     for index in range(benign_quota):
-        pool = _BENIGN_TEXTS if index % 2 == 0 else _FAKE_VALUE_TEXTS
-        text = pool[(index // 2) % len(pool)]
+        if index % 5 < 2:  # 40%：普通说明文字（不含敏感形态）
+            text = f"{rng.choice(_BENIGN_MARKERS_ZH)}说明：{rng.choice(_BENIGN_TOPICS)}"
+        else:  # 60%：困难负例
+            text = _hard_benign_text(rng)
+        if not is_benign_marked(text):
+            text = "示例数据：" + text
+        weak = weak_label(text)
         labels = _zero_labels()
         labels[BENIGN] = True
-        # 硬负例：带示例标记但确实出现号码——教会模型"benign 压过敏感特征"
-        weak = weak_label(text)
-        if weak.labels.get(BENIGN) and any(weak.labels.get(name) for name in SENSITIVE_LABELS):
-            for name in SENSITIVE_LABELS:
-                labels[name] = weak.labels.get(name, False)
+        for name in SENSITIVE_LABELS:
+            labels[name] = bool(weak.labels.get(name))
         examples.append(Example(text=text, labels=labels))
 
     rng.shuffle(examples)

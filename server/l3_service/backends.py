@@ -147,6 +147,26 @@ class MockGuardBackend:
 # --------------------------------------------------------------------------- 真实模型
 
 
+def _resolve_dtype(torch, device: str):
+    """按 ``FLOWMASK_L3_DTYPE`` 选权重类型；auto = GPU 用 bf16、CPU 用 fp32。
+
+    CPU 跑 4B 这类大一些的模型时，fp32 要 16 GB 内存且更慢，
+    设置 ``FLOWMASK_L3_DTYPE=bf16`` 可以把内存减半。
+    """
+    choice = os.environ.get("FLOWMASK_L3_DTYPE", "auto").strip().lower()
+    mapping = {
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+        "fp16": torch.float16,
+        "half": torch.float16,
+        "fp32": torch.float32,
+        "float32": torch.float32,
+    }
+    if choice in mapping:
+        return mapping[choice]
+    return torch.bfloat16 if device != "cpu" else torch.float32
+
+
 class TransformersGuardBackend:
     """Qwen3Guard-Gen 系列（transformers）后端；按需懒加载，失败时给可照做的提示。"""
 
@@ -175,7 +195,7 @@ class TransformersGuardBackend:
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             self._torch = torch
-            dtype = torch.bfloat16 if self.device != "cpu" else torch.float32
+            dtype = _resolve_dtype(torch, self.device)
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_dir, trust_remote_code=True)
             self._model = AutoModelForCausalLM.from_pretrained(
                 self.model_dir, torch_dtype=dtype, trust_remote_code=True

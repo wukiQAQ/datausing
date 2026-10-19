@@ -148,3 +148,26 @@ def test_type_score_rounding() -> None:
     payload = pred.to_dict()
     assert payload["types"][0]["confidence"] == 0.1235
     assert payload["benign"] == 0.75
+
+
+def test_export_load_labels_falls_back_to_labels_json(tmp_path) -> None:
+    """自己微调的模型 config.id2label 可能不是「序号->名字」，必须能读 labels.json。"""
+    import argparse
+    import json
+
+    from l2_service.export_onnx import _load_labels
+
+    labels = ["phone", "id_card", "benign"]
+    (tmp_path / "labels.json").write_text(json.dumps(labels), encoding="utf-8")
+    args = argparse.Namespace(labels="", model_dir=tmp_path)
+    assert _load_labels(args, {"id2label": {"phone": 0, "id_card": 1, "benign": 2}}) == labels
+
+
+def test_export_load_labels_from_id2label(tmp_path) -> None:
+    import argparse
+
+    from l2_service.export_onnx import _load_labels
+
+    args = argparse.Namespace(labels="", model_dir=tmp_path)
+    config = {"id2label": {"0": "phone", "1": "id_card"}}
+    assert _load_labels(args, config) == ["phone", "id_card"]
