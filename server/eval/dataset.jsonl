@@ -1,0 +1,67 @@
+{"id": "L3-001", "format": "text", "content": "客户张三，身份证号 11010519491231002X，手机 13800138000", "level": "L3", "types": ["id_card", "phone"], "note": "18 位有效身份证（校验位 X）"}
+{"id": "L3-002", "format": "text", "content": "收货人 李四，身份证 44030419900307123X，银行卡 6222021234567894", "level": "L3", "types": ["id_card", "bank_card"], "note": "身份证 + 有效 Luhn 卡号"}
+{"id": "L3-003", "format": "json", "content": "{\"name\": \"李四\", \"id_card\": \"320102198811050060\", \"phone\": \"13900139000\"}", "level": "L3", "types": ["name", "id_card", "phone"], "note": "JSON 表单里的身份证"}
+{"id": "L3-004", "format": "csv", "content": "name,phone,bank_card\n王五,13700137000,6228480402564899\n赵六,13600136000,4111111111111111", "level": "L3", "types": ["name", "phone", "bank_card"], "note": "CSV 批量卡号"}
+{"id": "L3-005", "format": "sql", "content": "INSERT INTO users(name, id_card) VALUES('王五','510107199504282314');", "level": "L3", "types": ["name", "id_card"], "note": "SQL DML 字面量里的身份证"}
+{"id": "L3-006", "format": "text", "content": "接口配置：api_key=sk-AbCdEf1234567890XyZ", "level": "L3", "types": ["secret"], "note": "api_key 键值对"}
+{"id": "L3-007", "format": "json", "content": "{\"token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk\"}", "level": "L3", "types": ["secret"], "note": "JWT"}
+{"id": "L3-008", "format": "text", "content": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----", "level": "L3", "types": ["secret"], "note": "PEM 私钥头"}
+{"id": "L3-009", "format": "text", "content": "数据库口令：password=P@ssw0rd2026", "level": "L3", "types": ["secret"], "note": "口令键值对"}
+{"id": "L3-010", "format": "csv", "content": "姓名,身份证号,地址\n张三,11010519491231002X,福建省福州市鼓楼区五四路100号", "level": "L3", "types": ["name", "id_card", "address"], "note": "CSV 三列敏感字段"}
+{"id": "L3-011", "format": "sql", "content": "UPDATE accounts SET password='Pa55w0rd!' WHERE id=42;", "level": "L3", "types": ["secret"], "note": "SQL 更新口令"}
+{"id": "L3-012", "format": "text", "content": "姓名: 赵六 身份证号: 44030419900307123X", "level": "L3", "types": ["name", "id_card"], "note": "中文键值对"}
+{"id": "L3-013", "format": "text", "content": "15 位老身份证：320102881105006，请核验", "level": "L3", "types": ["id_card"], "note": "15 位身份证（YYMMDD 形态，按策略同为高危）"}
+{"id": "L2-014", "format": "text", "content": "联系电话 13800138000，工作日 9:00-18:00 在线", "level": "L2", "types": ["phone"], "note": "仅手机号（中危）"}
+{"id": "L2-015", "format": "text", "content": "邮箱 zhang.san@example.com，手机 13900139000", "level": "L2", "types": ["email", "phone"], "note": "邮箱 + 手机共现"}
+{"id": "L2-016", "format": "text", "content": "姓名: 张三 地址: 福建省福州市鼓楼区五四路100号 邮箱: zhang@example.com", "level": "L2", "types": ["name", "address", "email"], "note": "姓名地址邮箱共现"}
+{"id": "L2-017", "format": "text", "content": "姓名: 李四 手机: 13700137000", "level": "L2", "types": ["name", "phone"], "note": "姓名 + 手机"}
+{"id": "L2-018", "format": "json", "content": "{\"contact\": \"王五\", \"phone\": \"13600136000\", \"address\": \"北京市海淀区中关村大街1号\"}", "level": "L2", "types": ["phone", "address"], "note": "JSON 联系方式"}
+{"id": "L2-019", "format": "csv", "content": "email,phone\na@example.com,13500135000\nb@example.com,13400134000", "level": "L2", "types": ["email", "phone"], "note": "CSV 联系方式批量"}
+{"id": "L2-020", "format": "sql", "content": "INSERT INTO customers(phone) VALUES('13300133000');", "level": "L2", "types": ["phone"], "note": "SQL 里的手机号"}
+{"id": "L2-021", "format": "text", "content": "诊断: 2型糖尿病，建议复查", "level": "L2", "types": ["medical"], "note": "医疗健康信息"}
+{"id": "L2-022", "format": "text", "content": "病历记录：高血压三期，用药见附表", "level": "L2", "types": ["medical"], "note": "病历关键词"}
+{"id": "L1-023", "format": "text", "content": "有问题请联系 zhang.san@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱"}
+{"id": "L1-024", "format": "text", "content": "姓名: 张三", "level": "L1", "types": ["name"], "note": "仅姓名"}
+{"id": "L1-025", "format": "text", "content": "地址: 上海市浦东新区世纪大道100号", "level": "L1", "types": ["address"], "note": "仅地址"}
+{"id": "L1-026", "format": "json", "content": "{\"email\": \"li.si@example.com\"}", "level": "L1", "types": ["email"], "note": "JSON 仅邮箱"}
+{"id": "L1-027", "format": "csv", "content": "email\nwang@example.com", "level": "L1", "types": ["email"], "note": "CSV 仅邮箱列"}
+{"id": "SAFE-028", "format": "text", "content": "本周服务可用率 99.95%，平均响应 128ms，无异常告警。", "level": "SAFE", "types": [], "note": "运维周报"}
+{"id": "SAFE-029", "format": "text", "content": "订单号 2026101800012345，金额 199.00 元，已发货。", "level": "SAFE", "types": [], "note": "订单号+金额（长数字非卡号）"}
+{"id": "SAFE-030", "format": "text", "content": "服务器内网地址 10.0.0.5，公网出口 203.0.113.10。", "level": "SAFE", "types": ["ip"], "note": "仅 IP 地址（极低权重）"}
+{"id": "SAFE-031", "format": "text", "content": "会议时间 2026-10-22 14:30，地点 3 楼会议室。", "level": "SAFE", "types": [], "note": "时间地点"}
+{"id": "SAFE-032", "format": "text", "content": "测试卡号 6222021234567890123 校验不通过，仅作占位。", "level": "SAFE", "types": [], "note": "Luhn 不通过的卡号形态"}
+{"id": "SAFE-033", "format": "text", "content": "身份证占位符 110105194912310021 校验位错误。", "level": "SAFE", "types": [], "note": "校验位错误的身份证形态"}
+{"id": "SAFE-034", "format": "text", "content": "版本号 v2.1.0，构建 20261022，无变更。", "level": "SAFE", "types": [], "note": "版本信息"}
+{"id": "SAFE-035", "format": "text", "content": "客户反馈页面加载慢，已转派运维处理。", "level": "SAFE", "types": [], "note": "普通工单描述"}
+{"id": "SAFE-036", "format": "json", "content": "{\"status\": \"ok\", \"uptime_s\": 86400, \"version\": \"0.1.0\"}", "level": "SAFE", "types": [], "note": "健康检查 JSON"}
+{"id": "SAFE-037", "format": "csv", "content": "date,requests,errors\n2026-10-21,12000,3\n2026-10-22,13500,1", "level": "SAFE", "types": [], "note": "监控指标 CSV"}
+{"id": "SAFE-038", "format": "sql", "content": "CREATE TABLE orders (id INTEGER PRIMARY KEY, amount REAL);", "level": "SAFE", "types": [], "note": "DDL（保留不脱敏）"}
+{"id": "SAFE-039", "format": "text", "content": "请把 sk- 开头的密钥轮换一下：口令字段见配置中心。", "level": "SAFE", "types": [], "note": "提到密钥但不含值"}
+{"id": "L3-040", "format": "json", "content": "{\"user\": {\"name\": \"张三\", \"phone\": \"13800138000\", \"id_card\": \"11010519491231002X\"}}", "level": "L3", "types": ["name", "phone", "id_card"], "note": "嵌套 JSON"}
+{"id": "L2-041", "format": "csv", "content": "姓名,电话\n张三,13800138000\n李四,13900139000", "level": "L2", "types": ["name", "phone"], "note": "CSV 姓名电话两列"}
+{"id": "L3-042", "format": "sql", "content": "SELECT * FROM user WHERE id_card = '44030419900307123X';", "level": "L3", "types": ["id_card"], "note": "SELECT 字面量"}
+{"id": "L3-043", "format": "json", "content": "{\"api_key\": \"sk-Live1234567890abcd\", \"region\": \"cn-north-1\"}", "level": "L3", "types": ["secret"], "note": "JSON 密钥"}
+{"id": "L2-044", "format": "text", "content": "姓名: 王五 邮箱: wang@example.com", "level": "L2", "types": ["name", "email"], "note": "姓名 + 邮箱"}
+{"id": "L1-045", "format": "text", "content": "地址: 广东省深圳市南山区科技园路 8 号", "level": "L1", "types": ["address"], "note": "仅地址（南山区）"}
+{"id": "SAFE-046", "format": "text", "content": "客服电话 400-800-1234，服务时间 8:00-22:00。", "level": "SAFE", "types": [], "note": "400 客服号非手机号"}
+{"id": "L3-017", "format": "csv", "content": "user,api_key\nalice,sk-Live1234567890abcd", "level": "L3", "types": ["secret"], "note": "CSV 密钥列（列名作上下文）"}
+{"id": "L3-018", "format": "sql", "content": "INSERT INTO tokens(user_id, token) VALUES(1,'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI5ODc2NTQzMjEwIn0.abcdefghijk');", "level": "L3", "types": ["secret"], "note": "SQL INSERT 的 JWT 列"}
+{"id": "L2-012", "format": "text", "content": "客户手机 13800138000，邮箱 zs@example.com，改签请联系。", "level": "L2", "types": ["phone", "email"], "note": "手机 + 邮箱共现"}
+{"id": "L2-013", "format": "json", "content": "{\"address\": \"浙江省杭州市西湖区文三路100号\", \"phone\": \"13900139000\"}", "level": "L2", "types": ["phone", "address"], "note": "JSON 地址 + 手机"}
+{"id": "L2-014", "format": "csv", "content": "phone,address\n13800138000,福建省福州市鼓楼区五四路100号", "level": "L2", "types": ["phone", "address"], "note": "CSV 手机 + 地址"}
+{"id": "L2-015", "format": "sql", "content": "SELECT * FROM user WHERE phone='13800138000';", "level": "L2", "types": ["phone"], "note": "SQL WHERE 里的手机号"}
+{"id": "L1-007", "format": "text", "content": "邮箱见名片：a.li@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（日志行）"}
+{"id": "L1-008", "format": "json", "content": "{\"address\": \"江苏省南京市玄武区中山路1号\"}", "level": "L1", "types": ["address"], "note": "JSON 仅地址"}
+{"id": "L1-009", "format": "csv", "content": "address\n广东省广州市天河区体育西路10号", "level": "L1", "types": ["address"], "note": "CSV 仅地址列"}
+{"id": "SAFE-014", "format": "text", "content": "JWT 格式示例 eyJhbGciOiJI.abc.def 不构成凭据。", "level": "SAFE", "types": [], "note": "形态像 JWT 但字段过短"}
+{"id": "SAFE-015", "format": "text", "content": "金额 1,234.56 元，税额 158.90 元，已入账。", "level": "SAFE", "types": [], "note": "金额数字"}
+{"id": "SAFE-016", "format": "csv", "content": "id,score\n1,0.95\n2,0.88", "level": "SAFE", "types": [], "note": "模型打分 CSV"}
+{"id": "SAFE-017", "format": "json", "content": "{\"trace_id\": \"abc123\", \"latency_ms\": 12}", "level": "SAFE", "types": [], "note": "链路追踪 JSON"}
+{"id": "SAFE-018", "format": "sql", "content": "INSERT INTO logs(msg) VALUES('service started at 10:00');", "level": "SAFE", "types": [], "note": "普通日志 INSERT"}
+{"id": "L2-016", "format": "text", "content": "手机 138-0013-8000，请回拨。", "level": "L2", "types": ["phone"], "note": "手机号带连字符（未做归一化）"}
+{"id": "L3-019", "format": "text", "content": "身份证 110105 19491231 002X（含空格）", "level": "L3", "types": ["id_card"], "note": "身份证含空格分隔"}
+{"id": "L3-020", "format": "text", "content": "银行卡 6222 0212 3456 7894 已解绑。", "level": "L3", "types": ["bank_card"], "note": "卡号含空格分隔（归一化后识别）"}
+{"id": "L2-017", "format": "text", "content": "手机号 １３８００１３８０００（全角数字）", "level": "L2", "types": ["phone"], "note": "全角数字"}
+{"id": "L1-010", "format": "text", "content": "联系邮箱 zhang.san＠example.com（全角 @）", "level": "L1", "types": ["email"], "note": "全角 @"}
+{"id": "L2-018", "format": "text", "content": "eyJwaG9uZSI6IjEzODAwMTM4MDAwIn0= 这段 base64 里是联系方式", "level": "L2", "types": ["phone"], "note": "base64 编码的敏感数据"}
+{"id": "SAFE-019", "format": "text", "content": "订单号 2026101800012345678，已发货，请注意查收。", "level": "SAFE", "types": [], "note": "19 位订单号恰巧通过 Luhn（误报风险点）"}

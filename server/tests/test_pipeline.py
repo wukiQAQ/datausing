@@ -1,4 +1,4 @@
-"""识别流水线测试：L1/L2/L3 协同、降级、脱敏级别覆盖。"""
+﻿"""识别流水线测试：L1/L2/L3 协同、降级、脱敏级别覆盖。"""
 
 from __future__ import annotations
 
@@ -58,12 +58,18 @@ def test_l1_only_json_document() -> None:
     document = parse_json('{"name":"张三","id_card":"%s"}' % ID_CARD)
     report = DetectionPipeline().analyze_document(document, DetectOptions())
     assert report.segments == 2
-    assert len(report.findings) == 1
-    finding = report.findings[0]
-    assert finding.level == Level.HIGH and finding.model_chain == "l1"
-    assert "已屏蔽:身份证号" in finding.masked
-    assert ID_CARD not in finding.masked
-    assert report.by_level["L3"] == 1
+    # 字段名作为上下文：{"name":"张三"} 命中姓名字段规则，{"id_card":...} 命中身份证
+    findings = {finding.path: finding for finding in report.findings}
+    assert set(findings) == {"$.name", "$.id_card"}
+    id_finding = findings["$.id_card"]
+    assert id_finding.level == Level.HIGH and id_finding.model_chain == "l1"
+    assert "已屏蔽:身份证号" in id_finding.masked
+    assert ID_CARD not in id_finding.masked
+    # 脱敏只作用在值上：区间从 0 开始，不把字段名算进去
+    assert id_finding.spans[0]["start"] == 0
+    name_finding = findings["$.name"]
+    # L1 是"前置警示 + 保留原文"，L2 才做首字符 + 星号\n    assert name_finding.level == Level.LOW and name_finding.masked == "[低危]张三"
+    assert report.by_level["L3"] == 1 and report.by_level["L1"] == 1
 
 
 def test_l2_merges_types_and_chain() -> None:

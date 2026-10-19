@@ -1,4 +1,4 @@
-"""JSON 文件解析：把对象/数组里的每个字符串值抽成 Segment。
+﻿"""JSON 文件解析：把对象/数组里的每个字符串值抽成 Segment。
 
 路径用 ``$`` 开头的简化 JSONPath（``$.user.phone``、``$.items[0].name``），
 前端左侧高亮与右侧脱敏结果都靠这个路径对齐。
@@ -11,19 +11,20 @@ import json
 from .base import Document, ParseError, Segment
 
 
-def _walk(node: object, path: str, out: list[Segment]) -> None:
+def _walk(node: object, path: str, out: list[Segment], hint: str = "") -> None:
     if isinstance(node, str):
         if node.strip():
-            out.append(Segment(path=path, text=node))
+            out.append(Segment(path=path, text=node, hint=hint))
         return
     if isinstance(node, dict):
         for key, value in node.items():
-            # 键名本身不参与检测（键通常是字段名而不是数据），只递归值
-            _walk(value, path + "." + str(key), out)
+            # 键名本身不参与脱敏，但作为"字段名上下文"传给检测层：
+            # {"api_key":"sk-..."} 能命中密钥规则，{"name":"张三"} 能命中姓名字段规则
+            _walk(value, path + "." + str(key), out, str(key))
         return
     if isinstance(node, list):
         for index, value in enumerate(node):
-            _walk(value, f"{path}[{index}]", out)
+            _walk(value, f"{path}[{index}]", out, hint)
 
 
 def parse_json(text: str, source: str = "data.json") -> Document:

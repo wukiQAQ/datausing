@@ -1,4 +1,4 @@
-"""多格式接入的统一中间模型。
+﻿"""多格式接入的统一中间模型。
 
 所有解析器最终都产出一个 ``Document``：文档由若干 ``Segment`` 组成，每个 Segment
 是一段"可识别的文本"（JSON 的字符串值、CSV 的单元格、SQL 的字面量、整段纯文本）。
@@ -21,6 +21,9 @@ class Segment:
     path: str
     text: str
     offset: int = -1
+    # 字段名/列名（JSON 键、CSV 表头、SQL 列名）：结构化数据里"键"本身就是语义上下文，
+    # 检测时把它拼在值前面（如 ``api_key: sk-...``）能显著提升 L1 命中率，脱敏只作用在值上。
+    hint: str = ""
 
 
 @dataclass(slots=True)

@@ -123,3 +123,18 @@ def test_l_diversity() -> None:
     rows.append({"age": "20", "zip": "100", "disease": "胃炎"})
     report = check_l_diversity(rows, ["age", "zip"], "disease", l=3)
     assert report.ok is True and report.violations == []
+
+
+def test_bankcard_rejects_non_bin_prefix() -> None:
+    """19 位订单号即使碰巧通过 Luhn，也不能当银行卡（首位不是卡组织 BIN）。"""
+    from app.identify.rules import valid_bankcard, valid_luhn
+
+    prefix = "202610180001234567"
+    order_like = next(prefix + digit for digit in "0123456789" if valid_luhn(prefix + digit))
+    assert valid_luhn(order_like) is True  # 先确认它确实过了 Luhn
+    assert valid_bankcard(order_like) is False
+    assert valid_bankcard("6222021234567894") is True
+
+    result = analyze(f"订单号 {order_like}，已发货。")
+    assert result.level.value == "SAFE"
+    assert result.type_keys == []

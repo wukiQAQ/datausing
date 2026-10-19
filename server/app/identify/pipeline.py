@@ -15,16 +15,17 @@ from __future__ import annotations
 
 import hashlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ..core.config import Settings
 from ..parsers.base import Document, Segment
 from .l2 import SemanticClassifier, SemanticHit, build_semantic_classifier
 from .l3 import GuardClassifier, build_guard_classifier
 from .masking import mask
+from .normalize import map_hit_span, normalize_with_map
 from .scoring import analyze as analyze_l1
-from .scoring import level_for
-from .types import EntityType, Level, Result, entity_label
+from .scoring import level_for, score
+from .types import EntityType, Hit, Level, Result, entity_label
 
 L2_MIN_CONFIDENCE = 0.70
 L2_SCORE_BONUS = 0.05
@@ -35,6 +36,41 @@ AMBIGUOUS_MAX = 0.85
 def sha256_text(text: str) -> str:
     """原文指纹：写库/审计只存哈希，不存原文。"""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _rebase_result(
+    result: Result,
+    shift: int,
+    index_map: list[int] | None = None,
+    text_length: int = 0,
+) -> Result:
+    """把"检测文本"上的命中偏移映射回"原文"，并重算分数。
+
+    两件事同时发生：
+    1. 结构化数据的字段名前缀（``hint: ``）只是识别上下文，不能进脱敏区间——偏移减 ``shift``；
+    2. 归一化（全角转半角、去掉数字间分隔符）会改变长度——用 ``index_map`` 映射回原文区间，
+       这样脱敏仍然覆盖原文里"带连字符/空格"的完整号码。
+
+    落在前缀或映射不出来的命中直接丢弃；重算分数保证 level 与最终命中集合一致。
+    """
+    hits: list[Hit] = []
+    for hit in result.hits:
+        start = hit.start - shift
+        end = hit.end - shift
+        if index_map is None:
+            if end <= 0:
+                continue
+            start = max(start, 0)
+        else:
+            span = map_hit_span(index_map, start, end, text_length)
+            if span is None:
+                continue
+            start, end = span
+        hits.append(replace(hit, start=start, end=end))
+    rebased = score(hits)
+    rebased.extra_evidence = list(result.extra_evidence)
+    rebased.degraded = result.degraded
+    return rebased
 
 
 @dataclass(slots=True)
@@ -150,7 +186,23 @@ class DetectionPipeline:
         return self.analyze_segment(Segment(path="$", text=text, offset=0), options)
 
     def analyze_segment(self, segment: Segment, options: DetectOptions) -> SegmentFinding | None:
-        result, model_chain, reason = self._run_chain(segment.text, options)
+        # 结构化数据（JSON/CSV/SQL）把字段名拼到值前面一起检测：
+        # 字段名是语义上下文（"api_key"、"身份证号"、"password"），没有它，
+        # 裸值只能靠形态猜，误判与漏判都会明显上升。
+        hint = (segment.hint or "").strip()
+        prefix = f"{hint}: " if hint else ""
+        # 识别前先归一化（全角→半角、去掉数字之间的空格/连字符），
+        # 但脱敏与落库仍以原文为准：偏移通过 index_map 映射回去
+        normalized, index_map = normalize_with_map(segment.text)
+        normalized_changed = normalized != segment.text
+        result, model_chain, reason = self._run_chain(prefix + normalized, options)
+        if prefix or normalized_changed:
+            result = _rebase_result(
+                result,
+                len(prefix),
+                index_map if normalized_changed else None,
+                len(segment.text),
+            )
         if not result.hits and not result.extra_evidence:
             return None
         return SegmentFinding(

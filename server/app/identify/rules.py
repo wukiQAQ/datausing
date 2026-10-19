@@ -1,4 +1,4 @@
-"""L1：规则快筛。
+﻿"""L1：规则快筛。
 
 与 Go 版 ``internal/dlp/rules.go`` 一一对应，共 12 条规则。设计取舍：
 
@@ -59,6 +59,16 @@ def valid_luhn(value: str) -> bool:
     return checksum % 10 == 0
 
 
+# 卡组织 BIN 首位：Visa=4、Master/JCB/Amex=3/5、银联=62（首位 6）。
+# 光靠 Luhn 不够：19 位订单号/流水号约有 1/10 概率"恰好"通过校验，会变成高危误报。
+_BANKCARD_LEAD = frozenset({"3", "4", "5", "6"})
+
+
+def valid_bankcard(value: str) -> bool:
+    """银行卡校验：Luhn 通过 且 首位符合卡组织 BIN 规则。"""
+    return bool(value) and value[0] in _BANKCARD_LEAD and valid_luhn(value)
+
+
 def valid_ipv4(value: str) -> bool:
     parts = value.split(".")
     if len(parts) != 4:
@@ -94,12 +104,13 @@ RULES: tuple[Rule, ...] = (
     _rule("idcard18", EntityType.ID_CARD,
           r"(?<![0-9])([1-9][0-9]{5}(?:19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx])(?![0-9])",
           0.95, 0.98, validate=valid_idcard18),
+    # 15 位老身份证：6 位地区 + 6 位出生日期(YYMMDD) + 3 位顺序码；校验位是 18 位才有的，这里靠形态+日期合法性
     _rule("idcard15", EntityType.ID_CARD,
           r"(?<![0-9])([1-9][0-9]{5}[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3})(?![0-9])",
-          0.80, 0.70),
+          0.80, 0.92),
     _rule("bankcard", EntityType.BANK_CARD,
           r"(?<![0-9])([0-9]{16,19})(?![0-9])",
-          0.90, 0.92, validate=valid_luhn),
+          0.90, 0.92, validate=valid_bankcard),
     # ---- 联系方式类 ----
     _rule("mobile", EntityType.PHONE,
           r"(?<![0-9])(1[3-9][0-9]{9})(?![0-9])",

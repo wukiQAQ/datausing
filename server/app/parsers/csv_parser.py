@@ -1,4 +1,4 @@
-"""CSV 文件解析：每个单元格一个 Segment，路径为 ``row{行号}.{列名}``。
+﻿"""CSV 文件解析：每个单元格一个 Segment，路径为 ``row{行号}.{列名}``。
 
 行号从 1 开始（数据行，表头不计），列名取表头；无表头时用 ``col{n}``。
 """
@@ -42,7 +42,7 @@ def parse_csv(text: str, source: str = "data.csv") -> Document:
             if not cell.strip():
                 continue
             column = columns[column_index] if column_index < len(columns) else f"col{column_index + 1}"
-            segments.append(Segment(path=f"row{row_index}.{column}", text=cell))
+            segments.append(Segment(path=f"row{row_index}.{column}", text=cell, hint=column))
 
     if not segments:
         raise ParseError("CSV 中没有可检测的单元格")
