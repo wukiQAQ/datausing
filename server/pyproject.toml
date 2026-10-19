@@ -20,7 +20,7 @@ docx = ["python-docx>=1.1"]
 pdf = ["pdfplumber>=0.11"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "l2_service*"]
+include = ["app*", "l2_service*", "l2_training*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

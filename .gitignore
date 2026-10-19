@@ -51,3 +51,5 @@ __pycache__/
 server/data/
 # 评测产出的机器明细（报告见 docs/评测报告.md）
 server/eval/latest.json
+# L2 训练产物（权重不提交）
+server/l2_models/
