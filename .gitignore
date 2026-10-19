@@ -49,3 +49,5 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 server/data/
+# 评测产出的机器明细（报告见 docs/评测报告.md）
+server/eval/latest.json

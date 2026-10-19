@@ -19,6 +19,7 @@
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
 | 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
+| 评测跑分 | ✅ | 自建标注集 67 条，分级准确率 / 类别 P-R-F1 / 高危漏检率 / 时延，一条命令复现 |
 | 静态/动态脱敏模式切换 | 🚧 | 算子已就绪，UI 开关与演示流程待接 |
 
 ## 2. 快速开始
@@ -52,6 +53,18 @@ curl.exe -s "http://127.0.0.1:8090/api/v1/audit/verify"
 curl.exe -s -o findings.jsonl "http://127.0.0.1:8090/api/v1/tasks/1/export?format=jsonl"
 ```
 
+## 3. 评测跑分
+
+```powershell
+cd server
+python -m app.evaluate     # 默认 L1 only，几秒钟出结果
+```
+
+- 评测集：`eval/dataset.jsonl`（67 条，覆盖 text/JSON/CSV/SQL 与困难样本），标注口径见 [`eval/README.md`](eval/README.md)；
+- 报告：自动写入 [`docs/评测报告.md`](../docs/评测报告.md)——总体指标、四级混淆矩阵、分级/类别 P-R-F1、判错样本清单；
+- 当前（L1 only）：分级准确率 **98.5%**、Macro-F1 **0.987**、类别 Micro-F1 **0.993**、高危漏检率 **0.0%**、L1 p95 **0.11 ms**；
+- 接入 L2/L3 后加 `--enable-l2 --enable-l3` 复跑，即可对比"多模型协同"的增益与代价。
+
 ## 3. 接口一览（前缀 `/api/v1`）
 
 | 方法 | 路径 | 说明 |
@@ -75,7 +88,7 @@ curl.exe -s -o findings.jsonl "http://127.0.0.1:8090/api/v1/tasks/1/export?forma
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。
 
-## 4. 配置（环境变量）
+## 5. 配置（环境变量）
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -92,7 +105,7 @@ curl.exe -s -o findings.jsonl "http://127.0.0.1:8090/api/v1/tasks/1/export?forma
 | `FLOWMASK_MAX_UPLOAD_MB` | `20` | 上传大小上限 |
 | `FLOWMASK_CORS_ORIGINS` | 本机 5173/8080 | 允许跨域的前端地址，逗号分隔 |
 
-## 5. 代码结构
+## 6. 代码结构
 
 ```text
 server/
@@ -126,7 +139,7 @@ server/
   pyproject.toml
 ```
 
-## 6. 设计要点（答辩口径）
+## 7. 设计要点（答辩口径）
 
 1. **原文不落库**：库里只存 `input_hash`（原文 SHA-256）、脱敏副本与哈希链字段；检索比对靠哈希，泄露风险最低。
 2. **分级识别按成本升级**：L1 微秒~毫秒级全量跑；只有 L1 模糊（分数落在 0.25~0.85 灰区）才升级 L2；只有 L2 仍不确定才送 L3。L2/L3 均可在配置里关掉，关掉即「纯规则模式」，链路不阻塞。
@@ -134,7 +147,7 @@ server/
 4. **可复算可审计**：每条 finding 带 `rule_ids`、`confidence_vector`、`model_chain`、`reasons`；审计日志与 finding 一一对应，`prev_hash` 串成链，任何字段改动都会在 `/audit/verify` 暴露。
 5. **模块化便于扩展**：解析器、识别器、算子、导出格式都是小函数/协议 + 注册表，新增格式或模型不需改主流程。
 
-## 7. 下一步
+## 8. 下一步
 
 - 阶段二：L2 BERT 推理服务（`/v1/classify`）、评测集与指标（F1/分级准确率）、动态脱敏接 UI、看板图表增强。
 - 阶段三：动态脱敏（差分隐私/l-多样性开关）、pcap 旁路恢复、答辩材料与视频。
