@@ -12,7 +12,7 @@
 | L1 规则识别 | ✅ | 12 条规则 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验 |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
-| L2 语义识别（独立推理服务） | ✅ | 客户端+降级策略已接；`l2_service/` 提供 HTTP 服务（mock 后端已可跑通纠偏链路，真 RoBERTa 权重待接入） |
+| L2 语义识别（独立推理服务） | ✅ | `l2_service/` HTTP 服务：mock / ONNX int8 / auto 三后端；已用 bert-base-chinese 微调模型实测（单条 10–33 ms，CPU） |
 | L3 本地大模型复核 | ✅ | 独立 `l3_service`（Qwen3Guard-Gen-0.6B，1.5 GB 本地权重、CPU 可跑）：只对 L1 模糊样本给安全判定 + 中文解释，只在高危方向升级，异常即降级 |
 | 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
@@ -23,7 +23,7 @@
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 75 条；L1 only 准确率 89.3%，接 L2 后 98.7%、安全误报率 25.9%→0.0%，`--compare-l2` 一条命令复现 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
-| L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据生成（875 条，含评测集并入）、数据体检、微调脚本、`labels.json` 契约；真权重训练需本机装 torch（8GB 显存够） |
+| L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据（默认 800 条，含 30% 困难负例）、弱标注、数据体检、微调 + ONNX 导出；本机真模型 macro-F1 **0.9844**、benign F1 **0.954** |
 
 ## 2. 快速开始
 
@@ -71,6 +71,11 @@ L2 跑在独立进程里（模型体积与依赖都重），一体机按 HTTP �
 # 终端 A：起 L2 服务（默认 mock 后端，零模型依赖；接真模型见 l2_service/README.md）
 cd server && python -m l2_service            # http://127.0.0.1:8091
 
+# 接真模型（本仓实测过的路径）：bert-base-chinese 微调 + ONNX int8
+python -m l2_training dataset --out data/l2_training.jsonl --count 800
+python -m l2_training train --dataset data/l2_training.jsonl --base-model models/bert-base-chinese
+FLOWMASK_L2_MODE=onnx FLOWMASK_L2_MODEL_DIR=l2_models/bert-sens-onnx python -m l2_service
+
 # 终端 B：让一体机启用 L2
 $env:FLOWMASK_ENABLE_L2 = "1"
 $env:FLOWMASK_L2_ENDPOINT = "http://127.0.0.1:8091/v1/classify"
@@ -78,14 +83,20 @@ python -m uvicorn app.main:app --port 8090
 ```
 
 协同规则（`app/identify/pipeline.py`）：只对 L1 命中的样本升级；L2 补类别加少量分；
-`benign≥0.75` 时压分抑制"文档/测试示例"这类形似误报（证件等直达类要 ≥0.90 才压，且取消 `direct`）；
-服务异常只标记 `degraded`，结论继续用 L1。实测增益：
+`benign≥0.65` 时压分抑制"文档/测试示例"这类形似误报（证件等直达类要 `≥0.75` 才压，且取消 `direct`）；
+服务异常只标记 `degraded`，结论继续用 L1。阈值可用环境变量覆盖（`FLOWMASK_L2_BENIGN_MIN`、
+`FLOWMASK_L2_BENIGN_DIRECT_MIN`），默认值是在 75 条留出集上调出来的：误报 25.9%→0%，高危漏检保持 0%。
 
-| 指标 | L1 only | L1 + L2(mock) |
+实测增益（真模型，75 条评测集，训练数据与评测集隔离）：
+
+| 指标 | L1 only | L1 + L2（真模型） |
 | --- | ---: | ---: |
 | 分级准确率 | 89.3% | **98.7%** |
 | 安全误报率 | 25.9% | **0.0%** |
 | 高危漏检率 | 0.0% | 0.0% |
+
+> 训练/导出细节（困难负例、`labels.json` 回退、`dynamo=False`、padding mask）见
+> [`l2_training/README.md`](l2_training/README.md) 与 [`l2_service/README.md`](l2_service/README.md)。
 
 ## 4. L3 护栏服务（Qwen3Guard）
 
@@ -135,7 +146,9 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 - 评测集：`eval/dataset.jsonl`（**75 条**，覆盖 text/JSON/CSV/SQL、文档/测试示例负样本与困难样本），标注口径见 [`eval/README.md`](eval/README.md)；
 - 报告：自动写入 [`docs/评测报告.md`](../docs/评测报告.md)——总体指标、四级混淆矩阵、分级/类别 P-R-F1、判错样本清单；
 - 当前（L1 only）：分级准确率 **89.3%**、Macro-F1 **0.928**、高危漏检率 **0.0%**、L1 p95 **0.12 ms**；
-- 对比多模型协同：`python -m app.evaluate --compare-l2 --compare-l3` → L1 only 89.3% / **L1+L2(mock) 98.7%**（安全误报率 25.9% → 0.0%）；
+- 对比多模型协同：`python -m app.evaluate --compare-l2 --compare-l3 --l2-endpoint http://127.0.0.1:8091/v1/classify`
+  → L1 only 89.3% / **L1+L2（真模型）98.7%**（安全误报率 25.9% → 0.0%，高危漏检率保持 0.0%）；
+- 阈值消融：`FLOWMASK_L2_BENIGN_MIN=0.9` 会退回 L1-only 行为，可用于现场对比"接/不接模型"的收益；
 
 ### 接口一览（前缀 `/api/v1`）
 

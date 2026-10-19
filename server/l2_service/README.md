@@ -58,7 +58,7 @@ python -m app.evaluate --compare-l2
 | `FLOWMASK_L2_MODE` | 后端 | 用途 |
 | --- | --- | --- |
 | `mock`（默认） | 词表 + 上下文标记的启发式 | 跑通链路、离线增益对比；**不是真模型** |
-| `onnx` | `model.int8.onnx` + `tokenizer.json` + `labels.json` | 接真 RoBERTa，CPU 推理约 5-20ms |
+| `onnx` | `model.int8.onnx` + `tokenizer.json` + `labels.json` | 接真模型，CPU 单条 **10–33 ms**（本机实测） |
 | `auto` | 有模型用 onnx，否则回落 mock | 演示机与开发机共用一套配置 |
 
 其他环境变量：`FLOWMASK_L2_HOST`（默认 127.0.0.1）、`FLOWMASK_L2_PORT`（默认 8091）、
@@ -80,7 +80,7 @@ pip install torch transformers datasets
 #    训练脚本沿用现有 pipeline 的标签定义；输出 config.json 里带 id2label
 
 # 3) 导出 ONNX + int8 量化（产物目录与 OnnxBackend 约定一致）
-pip install onnx onnxruntime onnxruntime-tools
+pip install onnx onnxruntime onnxscript onnxruntime-tools
 python -m l2_service.export_onnx --model-dir models/roberta-wwm-sens --out models/roberta-wwm-sens-onnx
 
 # 4) 用真模型起服务
@@ -118,11 +118,28 @@ POST /v1/classify
 
 ## 7. 当前效果（评测集 75 条）
 
-| 指标 | L1 only | L1 + L2（mock） |
+| 指标 | L1 only | L1 + L2（**真模型** ONNX int8） |
 | --- | ---: | ---: |
 | 分级准确率 | 89.3% | **98.7%** |
 | 安全误报率 | 25.9% | **0.0%** |
 | 高危漏检率 | 0.0% | 0.0% |
+| 单条延迟 | — | 10–33 ms（CPU，回环 HTTP 除外） |
 
-> mock 后端只用于验证链路价值；接真模型后复跑 `python -m app.evaluate --enable-l2`，
-> 才是"多模型协同"的真实增益。报告见 [`docs/评测报告.md`](../../docs/评测报告.md)。
+复跑：
+
+```powershell
+python -m app.evaluate --compare-l2 --compare-l3 --l2-endpoint http://127.0.0.1:8091/v1/classify
+```
+
+> 真模型由 `l2_training` 用 bert-base-chinese 微调（macro-F1 0.9844）后经 `export_onnx` 转 int8；
+> 训练数据与评测集隔离。报告见 [`docs/评测报告.md`](../../docs/评测报告.md)。
+
+### 5.1 导出/推理踩过的三个坑（已修）
+
+1. **`id2label` 不是「序号 → 名字」**：微调模型的 `config.json` 里 `id2label` 是「名字 → 序号」。
+   现在 `export_onnx` 优先读模型目录的 `labels.json`，其次数字型 `id2label`，都不行才报错提示。
+2. **torch dynamo 导出产物无法 int8 量化**（`ShapeInferenceError: dimension 0 (768) vs (11)`）：
+   已固定 `torch.onnx.export(..., dynamo=False)` 走 legacy 导出。
+3. **ONNX 输入没带 attention mask**：`tokenizer.json` 自带 padding 到 128，若 mask 全 1，
+   有效 token 被当成 padding，预测几乎全错（手机号 0.84 → 空）。现在 `no_padding()` + 用
+   `attention_mask` 构造 mask。

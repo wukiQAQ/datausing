@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、119 个测试通过（含 pcap 流量导入） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、148 个测试通过（含 pcap 流量导入、L2 真模型联调） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -32,7 +32,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 能力 | 说明 | 状态 |
 | --- | --- | --- |
 | 多格式解析与分段定位 | 文本整段；JSON `$` 路径；CSV/TSV `row{n}.{列名}`；SQL 只取 DML 字面量（DDL 保留）；Word 段落/表格；PDF 按页 | ✅ |
-| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，mock 后端跑通纠偏，真 RoBERTa 权重待训练）；L3 独立护栏服务 ✅（`server/l3_service/`，Qwen3Guard-Gen-0.6B 真权重 1.5 GB 已实测） | 🚧 |
+| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，bert-base-chinese 微调 + ONNX int8 真模型，单条 10–33ms）；L3 独立护栏服务 ✅（`server/l3_service/`，Qwen3Guard-Gen-0.6B 真权重 1.5 GB 已实测） | ✅ |
 | 分级与赋权 | 加权最大 + 共现修正 + 极端类别直达 → L3/L2/L1/SAFE | ✅ |
 | 四级脱敏 + 命中区间 | 四级模板 + `spans` 区间，前端可高亮「原文 → 脱敏」对照 | ✅ |
 | 任务与落库 | 后台线程执行，`tasks`/`findings` 表，按级别/类别/任务查询 | ✅ |
@@ -44,8 +44,8 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 正式前端（Vue3 + Element Plus + ECharts） | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），Vite 构建后挂 `/app`；未构建自动回落 `/ui/` | ✅ |
 | 流量导入（服务端 pcap） | 上传 pcap/pcapng → TCP 重组 + HTTP 正文提取 → 复用同一套分级/脱敏/任务/审计；`GET /traffic/sample` 自带示例；前端「流量导入 · pcap」页面一键跑示例（`?demo=1`） | ✅ |
 | 动态脱敏视图（授权切换） | `POST /api/v1/dynamic/render` + `/dynamic/policy`：未授权只给脱敏副本、授权返回原文并写审计链；内置页面「动态脱敏」页签可直接演示 | ✅ |
-| 评测集与指标 | 自建标注集 75 条：L1 only 准确率 89.3% → 接 L2 后 **98.7%**、安全误报率 **25.9%→0.0%**、高危漏检率 0.0%，`--compare-l2` 一键复跑 | ✅ |
-| L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 875 条、数据体检、微调脚本与 `labels.json` 契约；真权重训练需装 torch（8GB 显存够） | ✅ |
+| 评测集与指标 | 自建标注集 75 条（与训练数据隔离）：L1 only 准确率 89.3% → 接 L2 真模型后 **98.7%**、安全误报率 **25.9%→0.0%**、高危漏检率 0.0%，`--compare-l2 --l2-endpoint` 一键复跑 | ✅ |
+| L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 800 条（30% 困难负例）、数据体检、微调 + ONNX 导出；本机已训出真模型（macro-F1 0.9844、benign F1 0.954） | ✅ |
 ## 网络流量扩展（阶段一成果，Go 采集端）
 
 一句话：**旁路镜像流量 → 还原载荷 → 三级协同识别 → 四级分级脱敏 → 审计留痕与看板**，全程本地推理，数据不出机。

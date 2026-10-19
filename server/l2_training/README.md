@@ -42,12 +42,30 @@ modelscope download --model hfl/chinese-roberta-wwm-ext --local_dir models/chine
 
 `--base-model models/bert-base-chinese` 可以直接指向本地目录。
 
+> ⚠️ **训练/评测隔离**：`dataset` 子命令默认**不**并入 `eval/dataset.jsonl`（早期默认并入过，
+> 等于把考卷当练习册，指标虚高）。要复现文档里的数字，保持默认即可；`--with-eval` 只用于
+> "少数据先跑通链路"的调试场景。
+
+> 📌 **困难负例**：自举数据里约 30% 是 `benign`，其中 60% 是「带示例标记 + 真敏感形态」的困难负例
+> （例如 `{"api_key":"sk-…示例"}`、`测试数据 4111111111111111`），专门教模型识别"形似但不是真泄露"。
+
+## 3.1 本机实测（RTX 5060 Laptop 8GB）
+
+| 项 | 数值 |
+| --- | --- |
+| 训练数据 | 800 条（自举，含 30% 困难负例） |
+| 基线模型 | `models/bert-base-chinese`（ModelScope 下载） |
+| 训练 | 3 epochs、batch 16、lr 2e-5，耗时 **11.6 s**（CUDA bf16） |
+| 验证集指标 | macro-F1 **0.9844**、micro-F1 0.9796、exact-match 0.9355 |
+| `benign` | P 1.000 / R 0.912 / F1 **0.954**（支持度 34） |
+| int8 ONNX | 98.27 MB，CPU 单条 **10–33 ms** |
+
 ## 3. 三步跑通
 
 ```powershell
 cd server
 
-# ① 造数据（自举 800 + 评测集 75）并体检（不需要 torch）
+# ① 造数据（默认只自举 800 条；--with-eval 才会把评测集并入，会泄漏，别用于出指标）
 python -m l2_training dataset --out data/l2_training.jsonl --count 800
 python -m l2_training inspect --dataset data/l2_training.jsonl
 
@@ -59,7 +77,7 @@ python -m l2_training train `
   --base-model models/chinese-roberta-wwm-ext `
   --out l2_models/roberta-wwm-sens --epochs 3 --batch-size 16 --lr 2e-5
 
-# ③ 导出 int8 ONNX 并接进服务
+# ③ 导出 int8 ONNX 并接进服务（需要 onnx onnxruntime onnxscript）
 python -m l2_service.export_onnx --model-dir l2_models/roberta-wwm-sens --out l2_models/roberta-wwm-sens-onnx
 $env:FLOWMASK_L2_MODE = "onnx"
 $env:FLOWMASK_L2_MODEL_DIR = "l2_models/roberta-wwm-sens-onnx"
