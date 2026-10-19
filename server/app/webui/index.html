@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
@@ -514,6 +514,10 @@ $("btn-refresh-rules").addEventListener("click", loadRules);
       ` · PDF 引擎 ${formats.pdf ? formats.pdf_engine : "未安装（pip install pdfplumber）"}`;
   } catch (err) {
     $("status").textContent = "服务未就绪：" + err.message;
+  }
+  // 打开页面就跑一遍示例：答辩/演示时第一眼就能看到「原文高亮 vs 脱敏副本」
+  if ($("input").value.trim()) {
+    detectText();
   }
 })();
 </script>
