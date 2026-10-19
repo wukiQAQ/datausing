@@ -1,4 +1,4 @@
-"""接口请求/响应模型（Pydantic v2）。
+﻿"""接口请求/响应模型（Pydantic v2）。
 
 Swagger（``/docs``）直接读这里，因此描述写清楚：初赛评审点开就能看懂每个字段。
 """
@@ -24,6 +24,16 @@ class DetectRequest(BaseModel):
     min_level: str = Field(default="SAFE", description="只返回 ≥ 该级别的结果（SAFE/L1/L2/L3）")
 
 
+class SpanOut(BaseModel):
+    """命中区间：前端据此在原文上高亮（偏移是字符下标，不含敏感值本身）。"""
+
+    start: int
+    end: int
+    type: str = Field(description="英文类别键：id_card / phone / ...")
+    label: str = Field(description="中文类别名：身份证号 / 手机号 / ...")
+    rule: str = Field(description="命中的规则名，便于解释与排障")
+
+
 class SegmentOut(BaseModel):
     path: str = Field(description="片段位置：JSON Path / 列名+行号 / SQL 语句+字面量")
     level: str
@@ -35,6 +45,7 @@ class SegmentOut(BaseModel):
     reason: str | None = None
     degraded: bool = False
     direct: bool = False
+    spans: list[SpanOut] = Field(default_factory=list, description="命中区间（原文高亮用）")
 
 
 class DetectOut(BaseModel):

@@ -1,4 +1,4 @@
-"""FlowMask FastAPI 入口。
+﻿"""FlowMask FastAPI 入口。
 
 启动即做三件事：建库建表（幂等）→ 应用数据库里的规则启停 → 挂载全部路由。
 鉴权可选：配置 ``FLOWMASK_API_TOKEN`` 后所有 ``/api/v1/*`` 需要 Bearer Token，
@@ -15,9 +15,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .api.deps import require_token
@@ -32,8 +35,12 @@ from .api.routes_tasks import router as tasks_router
 from .core.config import get_settings
 from .core.db import get_database
 
+WEBUI_DIR = Path(__file__).resolve().parent / "webui"
+
 DESCRIPTION = """
 FlowMask：网络与文档流量的分级脱敏与审计溯源系统（数据安全作品赛）。
+
+- **自带控制台**：启动后打开 `/ui`（左右对照 + 任务/审计 + 统计看板 + 规则启停），无需前端构建
 
 - **输入**：粘贴文本 / 上传 txt·json·csv·sql（Word·PDF 待接入）/ pcap 离线检测（另一 CLI）
 - **识别**：L1 规则（12 条 + 校验位）→ L2 BERT 语义（可选）→ L3 本地大模型复核（可选）
@@ -85,14 +92,12 @@ def create_app() -> FastAPI:
         router.include_router(sub)
     app.include_router(router)
 
+    # 自带控制台：纯静态单页（无构建步骤、无外网依赖），评委打开根路径即可用
+    app.mount("/ui", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
+
     @app.get("/", include_in_schema=False)
-    def index() -> dict[str, str]:
-        return {
-            "name": "FlowMask API",
-            "version": __version__,
-            "docs": "/docs",
-            "api_prefix": "/api/v1",
-        }
+    def index() -> RedirectResponse:
+        return RedirectResponse(url="/ui")
 
     return app
 

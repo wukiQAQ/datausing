@@ -1,4 +1,4 @@
-"""即时检测：文本粘贴 / 文件上传。
+﻿"""即时检测：文本粘贴 / 文件上传。
 
 这两个接口**不落库**，用于"脱敏前/后左右对照"的现场演示；
 需要留痕与审计时走 ``POST /api/v1/tasks``（后台任务，写 findings + 审计链）。
@@ -15,7 +15,7 @@ from ..parsers.base import Document, ParseError, ParseUnsupported
 from ..parsers.registry import parse_bytes, parse_text_input, supported_formats
 from ..tasks.export import masked_document
 from .deps import build_options, pipeline_dep, settings_dep
-from .schemas import DetectOut, DetectRequest, SegmentOut
+from .schemas import DetectOut, DetectRequest, SegmentOut, SpanOut
 
 router = APIRouter(tags=["detect"])
 
@@ -36,6 +36,7 @@ def _to_out(report: DocumentReport, document: Document) -> DetectOut:
                 reason=finding.reason,
                 degraded=finding.degraded,
                 direct=finding.direct,
+                spans=[SpanOut(**span) for span in finding.spans],
             )
             for finding in report.findings
         ],
@@ -95,6 +96,6 @@ async def detect_file(
     return _to_out(pipeline.analyze_document(document, options), document)
 
 
-@router.get("/formats", summary="支持的输入格式")
-def formats() -> dict[str, list[str]]:
+@router.get("/formats", summary="支持的输入格式", response_model=None)
+def formats() -> dict[str, object]:
     return supported_formats()

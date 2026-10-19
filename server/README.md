@@ -7,17 +7,17 @@
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| 文本/JSON/CSV/SQL 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量 |
+| 文本/JSON/CSV/SQL/Word/PDF 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量；Word 段落 `p{n}` / 表格 `table{表}.{行}.{列}`；PDF 按页 `page{n}`（依赖可选 `pdfplumber`） |
 | L1 规则识别 | ✅ | 12 条规则 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验 |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
-| 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本」，原文不入库 |
+| 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
 | L2 语义识别（BERT 服务） | 🚧 | 已实现 HTTP 客户端与降级策略（`min_level=L2` 且 L1 命中模糊分区间才升级），推理服务待接入 |
 | L3 本地大模型复核 | 🚧 | 已实现 Ollama `/api/generate` 客户端 + JSON 输出解析 + 超时降级；模型（Qwen3Guard-Stream 0.6B）待接入 |
 | 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
-| Word / PDF 解析 | ⏳ | 解析器已占位（返回明确提示），依赖 `python-docx` / `pdfplumber` |
+| 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 静态/动态脱敏模式切换 | 🚧 | 算子已就绪，UI 开关与演示流程待接 |
 
@@ -28,9 +28,10 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 50 个用例
+python -m pytest -q            # 58 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
-# 打开 http://127.0.0.1:8090/docs 直接试调
+# 打开 http://127.0.0.1:8090/ui/ 用可视化界面；或 http://127.0.0.1:8090/docs 调接口
+# 想支持 PDF：pip install pdfplumber（未安装时 /formats 会提示，上传 PDF 返回 415）
 ```
 
 一次最小闭环（PowerShell）：
@@ -55,6 +56,7 @@ curl.exe -s -o findings.jsonl "http://127.0.0.1:8090/api/v1/tasks/1/export?forma
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| GET | `/`、`/ui/` | 根路径 307 跳到内置单页界面（左右对照 + 分级统计） |
 | GET | `/health` | 健康检查（版本、时间、L2/L3 是否启用） |
 | POST | `/detect` | 即时检测文本（不落库） |
 | POST | `/detect/file` | 即时检测上传文件（multipart） |
@@ -99,7 +101,9 @@ server/
     core/
       config.py        Settings（环境变量，frozen dataclass + lru_cache）
       db.py            sqlite3 封装：tasks/findings/audit_log/rules 四张表 + 写锁 + WAL
-    parsers/           输入分段：text/json/csv/sql（docx/pdf 占位）+ registry 统一入口
+    parsers/           输入分段：text/json/csv/sql/docx/pdf + registry 统一入口（PDF 依赖可选 pdfplumber）
+    webui/
+      index.html       自带单页界面：上传/粘贴 → 左原文高亮 / 右脱敏副本（无需前端工具链）
     identify/
       rules.py         L1 规则表（含校验算法、可启停）
       scoring.py       评分公式与阈值
@@ -118,7 +122,7 @@ server/
       deps.py          鉴权、操作人、流水线单例
       schemas.py       请求/响应模型
       routes_*.py      health/detect/tasks/findings/stats/rules/audit
-  tests/               50 个用例：识别、解析、管线、审计、API
+  tests/               58 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面
   pyproject.toml
 ```
 
@@ -132,5 +136,5 @@ server/
 
 ## 7. 下一步
 
-- 阶段二：Word/PDF 解析（`python-docx`/`pdfplumber`）、看板前端（左右对照 + 分级图表）、L2 BERT 推理服务、评测集与指标。
+- 阶段二：L2 BERT 推理服务（`/v1/classify`）、评测集与指标（F1/分级准确率）、动态脱敏接 UI、看板图表增强。
 - 阶段三：动态脱敏（差分隐私/l-多样性开关）、pcap 旁路恢复、答辩材料与视频。

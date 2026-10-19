@@ -1,4 +1,4 @@
-"""接口层端到端测试：检测、任务、导出、统计、规则、审计、鉴权。"""
+﻿"""接口层端到端测试：检测、任务、导出、统计、规则、审计、鉴权。"""
 
 from __future__ import annotations
 
@@ -33,6 +33,28 @@ def test_detect_text_returns_masked_only(client) -> None:
     assert finding["level"] == "L3" and "已屏蔽" in finding["masked"]
     # 整个响应里不能出现原文敏感值（只允许哈希与脱敏副本）
     assert ID_CARD not in json.dumps(body, ensure_ascii=False)
+
+
+def test_detect_returns_highlight_spans(client) -> None:
+    text = f"客户张三，手机 {PHONE}，身份证 {ID_CARD}"
+    body = client.post("/api/v1/detect", json={"text": text}).json()
+    spans = body["findings"][0]["spans"]
+    assert spans, "应返回命中区间供前端高亮"
+    # 区间必须能切回原文命中值，且类别键/中文名都在
+    types = {span["type"] for span in spans}
+    assert {"phone", "id_card"} <= types
+    cut = {text[span["start"]:span["end"]] for span in spans}
+    assert PHONE in cut and ID_CARD in cut
+    assert all(span["label"] and span["rule"] for span in spans)
+
+
+def test_ui_page_and_root_redirect(client) -> None:
+    page = client.get("/ui/")
+    assert page.status_code == 200
+    assert "FlowMask" in page.text and "左右对照" in page.text
+    redirect = client.get("/", follow_redirects=False)
+    assert redirect.status_code in {302, 307}
+    assert redirect.headers["location"] == "/ui"
 
 
 def test_detect_file(client) -> None:

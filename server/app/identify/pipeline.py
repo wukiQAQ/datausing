@@ -1,4 +1,4 @@
-"""三级协同识别流水线。
+﻿"""三级协同识别流水线。
 
 一条 Segment 的处理顺序：L1 规则 →（可选）L2 语义 →（可选）L3 护栏 → 评分分级 → 脱敏。
 设计要点：
@@ -24,7 +24,7 @@ from .l3 import GuardClassifier, build_guard_classifier
 from .masking import mask
 from .scoring import analyze as analyze_l1
 from .scoring import level_for
-from .types import EntityType, Level, Result
+from .types import EntityType, Level, Result, entity_label
 
 L2_MIN_CONFIDENCE = 0.70
 L2_SCORE_BONUS = 0.05
@@ -64,6 +64,8 @@ class SegmentFinding:
     direct: bool = False
     degraded: bool = False
     reason: str | None = None
+    # 命中区间（字符偏移 + 类别），供前端在原文上高亮；只有 L1 能给出精确区间
+    spans: list[dict[str, object]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -82,6 +84,7 @@ class SegmentFinding:
             "direct": self.direct,
             "degraded": self.degraded,
             "reason": self.reason,
+            "spans": self.spans,
         }
 
 
@@ -164,6 +167,16 @@ class DetectionPipeline:
             direct=result.direct,
             degraded=result.degraded,
             reason=reason,
+            spans=[
+                {
+                    "start": hit.start,
+                    "end": hit.end,
+                    "type": hit.type.value,
+                    "label": entity_label(hit.type),
+                    "rule": hit.rule,
+                }
+                for hit in result.hits
+            ],
         )
 
     # ---- 内部：三级链路 -------------------------------------------------

@@ -7,9 +7,9 @@ from .base import Document, ParseError, ParseUnsupported, Segment
 from .csv_parser import parse_csv
 from .docx_parser import parse_docx
 from .json_parser import parse_json
-from .pdf_parser import parse_pdf
+from .pdf_parser import parse_pdf, pdf_engine
 from .registry import (
-    PENDING_EXTENSIONS,
+    DOCUMENT_EXTENSIONS,
     SUPPORTED_TEXT_EXTENSIONS,
     parse_bytes,
     parse_text_input,
@@ -19,8 +19,8 @@ from .sql_parser import parse_sql
 from .text import parse_text
 
 __all__ = [
+    "DOCUMENT_EXTENSIONS",
     "Document",
-    "PENDING_EXTENSIONS",
     "ParseError",
     "ParseUnsupported",
     "SUPPORTED_TEXT_EXTENSIONS",
@@ -33,5 +33,6 @@ __all__ = [
     "parse_sql",
     "parse_text",
     "parse_text_input",
+    "pdf_engine",
     "supported_formats",
 ]

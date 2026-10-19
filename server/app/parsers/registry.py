@@ -12,7 +12,7 @@ from .base import Document, ParseError, ParseUnsupported
 from .csv_parser import parse_csv
 from .docx_parser import parse_docx
 from .json_parser import parse_json
-from .pdf_parser import parse_pdf
+from .pdf_parser import parse_pdf, pdf_engine
 from .sql_parser import parse_sql
 from .text import parse_text
 
@@ -25,7 +25,8 @@ SUPPORTED_TEXT_EXTENSIONS: dict[str, str] = {
     ".tsv": "csv",
     ".sql": "sql",
 }
-PENDING_EXTENSIONS: dict[str, str] = {".docx": "docx", ".pdf": "pdf"}
+# 二进制文档格式：docx 用标准库解析；pdf 依赖可选引擎（见 pdf_engine）
+DOCUMENT_EXTENSIONS: dict[str, str] = {".docx": "docx", ".pdf": "pdf"}
 
 
 def decode_bytes(data: bytes) -> str:
@@ -41,12 +42,14 @@ def decode_bytes(data: bytes) -> str:
 def parse_bytes(filename: str, data: bytes) -> Document:
     """按扩展名解析上传文件。"""
     suffix = PurePath(filename).suffix.lower()
-    if suffix in PENDING_EXTENSIONS:
-        if suffix == ".docx":
+    if suffix in DOCUMENT_EXTENSIONS:
+        if DOCUMENT_EXTENSIONS[suffix] == "docx":
             return parse_docx(data, source=filename)
         return parse_pdf(data, source=filename)
     if suffix not in SUPPORTED_TEXT_EXTENSIONS:
-        supported = ", ".join(sorted(SUPPORTED_TEXT_EXTENSIONS) + sorted(PENDING_EXTENSIONS))
+        supported = ", ".join(
+            sorted(set(SUPPORTED_TEXT_EXTENSIONS) | set(DOCUMENT_EXTENSIONS))
+        )
         raise ParseUnsupported(f"暂不支持 {suffix or '无扩展名'} 文件；当前支持：{supported}")
 
     text = decode_bytes(data)
@@ -75,9 +78,13 @@ def parse_text_input(text: str, source: str = "text") -> Document:
     return document
 
 
-def supported_formats() -> dict[str, list[str]]:
-    """给 /health 用：告诉前端现在能传什么、什么还没接。"""
+def supported_formats() -> dict[str, object]:
+    """给 /formats 与前端用：能传什么、PDF 引擎是否就绪、缺依赖怎么装。"""
+    engine = pdf_engine()
     return {
-        "supported": sorted(SUPPORTED_TEXT_EXTENSIONS),
-        "pending": sorted(PENDING_EXTENSIONS),
+        "supported": sorted(set(SUPPORTED_TEXT_EXTENSIONS) | set(DOCUMENT_EXTENSIONS)),
+        "docx": True,
+        "pdf": engine is not None,
+        "pdf_engine": engine,
+        "hint": "" if engine is not None else "PDF 需要可选依赖：pip install pdfplumber",
     }
