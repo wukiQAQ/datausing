@@ -1,4 +1,4 @@
-# FlowMask Server（FastAPI 一体机）
+﻿# FlowMask Server（FastAPI 一体机）
 
 > 文件/文档侧的分级脱敏与审计溯源服务：**上传或粘贴 → 多模型分级识别 → 四级脱敏 → 落库留痕 → 哈希链审计**。
 > 这是需求 v2（2026-10-19）的主链路实现；仓库里的 Go 采集端与 `cmd/flowmask` 保留为「网络流量旁路」扩展能力。
@@ -8,6 +8,7 @@
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 文本/JSON/CSV/SQL/Word/PDF 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量；Word 段落 `p{n}` / 表格 `table{表}.{行}.{列}`；PDF 按页 `page{n}`（依赖可选 `pdfplumber`） |
+| pcap 流量导入（服务端） | ✅ | 上传 pcap/pcapng → TCP 重组 + HTTP 请求解析 → 每个正文当一个片段，复用同一套识别/分级/脱敏/任务/审计；`GET /traffic/sample` 提供自带示例（`samples/demo-traffic.pcap`）；HTTPS、压缩体与分块传输暂不解析 |
 | L1 规则识别 | ✅ | 12 条规则 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验 |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
@@ -18,7 +19,7 @@
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
 | 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
-| 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：5 个页面（即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
+| 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 75 条；L1 only 准确率 89.3%，接 L2 后 98.7%、安全误报率 25.9%→0.0%，`--compare-l2` 一条命令复现 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
@@ -31,7 +32,7 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 108 个用例
+python -m pytest -q            # 119 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
 cd ../web && npm install && npm run build && cd ../server
@@ -51,7 +52,11 @@ curl.exe -s -X POST http://127.0.0.1:8090/api/v1/detect -H "Content-Type: applic
 curl.exe -s -X POST http://127.0.0.1:8090/api/v1/tasks/text -H "Content-Type: application/json" `
   -d '{\"text\":\"客户张三，手机 13800138000\"}'
 
-# 3) 查结果 / 统计 / 校验审计链 / 导出
+# 3) pcap 流量导入（HTTP 正文 → 同一套识别/分级/审计）
+curl.exe -s -F "pcap=@samples/demo-traffic.pcap" "http://127.0.0.1:8090/api/v1/traffic/import"
+curl.exe -s -o demo.pcap "http://127.0.0.1:8090/api/v1/traffic/sample"
+
+# 4) 查结果 / 统计 / 校验审计链 / 导出
 curl.exe -s "http://127.0.0.1:8090/api/v1/tasks/1/findings"
 curl.exe -s "http://127.0.0.1:8090/api/v1/stats"
 curl.exe -s "http://127.0.0.1:8090/api/v1/audit/verify"
@@ -103,6 +108,9 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | POST | `/detect` | 即时检测文本（不落库） |
 | POST | `/detect/file` | 即时检测上传文件（multipart） |
 | GET | `/formats` | 支持的格式、已接入/待接入、各格式是否可用 |
+| GET | `/traffic/formats` | 流量导入支持的格式与限制（pcap/pcapng、上传上限） |
+| POST | `/traffic/import` | 上传 pcap：解析 HTTP 正文并创建检测任务（201 + 任务 ID 与解析统计） |
+| GET | `/traffic/sample` | 下载自带示例抓包 `demo-traffic.pcap`（3 条会话，含 L3/L2/SAFE） |
 | POST | `/tasks` | 上传文件建任务 |
 | POST | `/tasks/text` | 粘贴文本建任务 |
 | GET | `/tasks` / `/tasks/{id}` | 任务列表 / 详情 |
