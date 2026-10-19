@@ -1,4 +1,4 @@
-﻿# FlowMask Server（FastAPI 一体机）
+# FlowMask Server（FastAPI 一体机）
 
 > 文件/文档侧的分级脱敏与审计溯源服务：**上传或粘贴 → 多模型分级识别 → 四级脱敏 → 落库留痕 → 哈希链审计**。
 > 这是需求 v2（2026-10-19）的主链路实现；仓库里的 Go 采集端与 `cmd/flowmask` 保留为「网络流量旁路」扩展能力。
@@ -18,6 +18,7 @@
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
 | 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
+| 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：5 个页面（即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 75 条；L1 only 准确率 89.3%，接 L2 后 98.7%、安全误报率 25.9%→0.0%，`--compare-l2` 一条命令复现 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
@@ -30,9 +31,12 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 58 个用例
+python -m pytest -q            # 108 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
-# 打开 http://127.0.0.1:8090/ui/ 用可视化界面；或 http://127.0.0.1:8090/docs 调接口
+# 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
+cd ../web && npm install && npm run build && cd ../server
+# 打开 http://127.0.0.1:8090/app/ 用正式前端（构建过时根路径自动跳这里）
+# 或 http://127.0.0.1:8090/ui/ 用零依赖内置单页；接口文档在 /docs
 # 想支持 PDF：pip install pdfplumber（未安装时 /formats 会提示，上传 PDF 返回 415）
 ```
 
@@ -162,8 +166,12 @@ server/
       deps.py          鉴权、操作人、流水线单例
       schemas.py       请求/响应模型
       routes_*.py      health/detect/tasks/findings/stats/rules/audit
-  tests/               58 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面
+  tests/               108 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2 服务/训练侧、评测
   pyproject.toml
+web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
+  src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView
+  src/api.js           接口封装（同源 /api/v1，开发态走 vite proxy 到 8090）
+  src/highlight.js     命中区间高亮 + 脱敏副本渲染
 ```
 
 ## 7. 设计要点（答辩口径）

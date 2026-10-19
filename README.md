@@ -1,4 +1,4 @@
-﻿# FlowMask · 分级脱敏与审计溯源系统
+# FlowMask · 分级脱敏与审计溯源系统
 
 > 福建省大学生数据安全大赛 · 自主命题（数据脱敏方向）参赛作品
 > **v2 主链路**：文档/文件/文本输入 → 多模型分级识别 → 四级脱敏 → 落库留痕 → 哈希链审计（Python FastAPI 一体机，见 [`server/README.md`](server/README.md)）
@@ -6,13 +6,15 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、106 个测试通过 | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/ui/` 直接看左右对照 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、108 个测试通过 | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
 ```text
 # v2：一条命令跑起来（文档侧主链路）
 cd server && pip install -e ".[dev]" && python -m uvicorn app.main:app --port 8090
-#   浏览器打开 http://127.0.0.1:8090/ui/ ：上传文件或粘贴文本 → 左原文高亮 / 右脱敏副本
+#   正式前端：cd ../web && npm install && npm run build → http://127.0.0.1:8090/app/
+#   零依赖单页：http://127.0.0.1:8090/ui/ （未构建前端时根路径自动回落到这里）
 # 网络侧：pcap → 识别分级 → 落库 → 接口查询
 go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 ```
@@ -39,6 +41,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 自定义规则 | 增删启停 + 正则可校验，库内持久化并即时生效 | ✅ |
 | 差分隐私 / l-多样性 | Laplace 噪声、数值泛化、l-多样性检查（已接口化） | ✅ |
 | 单页可视化 | `GET /ui/`：上传/粘贴 → 左右对照 + 分级统计，零前端依赖 | ✅ |
+| 正式前端（Vue3 + Element Plus + ECharts） | `web/`：5 个页面（即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），Vite 构建后挂 `/app`；未构建自动回落 `/ui/` | ✅ |
 | 动态脱敏视图（授权切换） | `POST /api/v1/dynamic/render` + `/dynamic/policy`：未授权只给脱敏副本、授权返回原文并写审计链；内置页面「动态脱敏」页签可直接演示 | ✅ |
 | 评测集与指标 | 自建标注集 75 条：L1 only 准确率 89.3% → 接 L2 后 **98.7%**、安全误报率 **25.9%→0.0%**、高危漏检率 0.0%，`--compare-l2` 一键复跑 | ✅ |
 | L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 875 条、数据体检、微调脚本与 `labels.json` 契约；真权重训练需装 torch（8GB 显存够） | ✅ |
@@ -164,6 +167,7 @@ go run ./cmd/netmon -source replay -replay-file data/demo-dlp.pcap -offline
 
 ```text
 server/       v2 主链路（Python FastAPI 一体机）：解析 → 识别 → 脱敏 → 落库 → 审计链
+web/          v2 正式前端（Vue3 + Element Plus + ECharts + Vite），构建产物挂服务端 /app
 cmd/
   netmon/     采集端主程序：抓包/回放 → 解析 → 聚合 → 存储 → HTTP API → 网页
   flowmask/   内容级检测 CLI：pcap → 敏感数据识别 → 分级 → 脱敏预览
