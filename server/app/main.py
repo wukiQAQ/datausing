@@ -1,4 +1,4 @@
-﻿"""FlowMask FastAPI 入口。
+"""FlowMask FastAPI 入口。
 
 启动即做三件事：建库建表（幂等）→ 应用数据库里的规则启停 → 挂载全部路由。
 鉴权可选：配置 ``FLOWMASK_API_TOKEN`` 后所有 ``/api/v1/*`` 需要 Bearer Token，
@@ -33,6 +33,7 @@ from .api.routes_rules import router as rules_router
 from .api.routes_rules import sync_active_rules
 from .api.routes_stats import router as stats_router
 from .api.routes_tasks import router as tasks_router
+from .api.routes_traffic import router as traffic_router
 from .core.config import get_settings
 from .core.db import get_database
 
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
             {"name": "system", "description": "健康检查"},
             {"name": "detect", "description": "即时检测（不落库，用于左右对照演示）"},
             {"name": "tasks", "description": "后台任务：上传/粘贴 → 识别 → 落库 → 审计"},
+            {"name": "traffic", "description": "流量导入：pcap → 正文 → 同一套识别分级与审计"},
             {"name": "findings", "description": "检测结果查询"},
             {"name": "stats", "description": "看板统计"},
             {"name": "rules", "description": "内置/自定义敏感规则"},
@@ -88,6 +90,7 @@ def create_app() -> FastAPI:
         health_router,
         detect_router,
         tasks_router,
+        traffic_router,
         findings_router,
         stats_router,
         rules_router,

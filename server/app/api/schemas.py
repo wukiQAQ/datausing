@@ -224,3 +224,23 @@ class DynamicRenderOut(BaseModel):
 
 class PolicyOut(BaseModel):
     levels: list[dict[str, object]]
+
+class TrafficFormatsOut(BaseModel):
+    """流量导入能力声明（前端据此显示上传入口）。"""
+
+    formats: list[str]
+    max_upload_mb: int
+    note: str = ""
+
+
+class TrafficImportOut(BaseModel):
+    """导入结果：报文/会话规模 + 后台任务号（结果仍从 /tasks/{id} 查）。"""
+
+    task_id: str
+    source: str
+    packets: int
+    decoded_frames: int
+    sessions: int
+    messages: int
+    segments: int
+    operator_id: str
