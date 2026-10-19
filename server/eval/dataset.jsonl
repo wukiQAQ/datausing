@@ -65,3 +65,11 @@
 {"id": "L1-010", "format": "text", "content": "联系邮箱 zhang.san＠example.com（全角 @）", "level": "L1", "types": ["email"], "note": "全角 @"}
 {"id": "L2-018", "format": "text", "content": "eyJwaG9uZSI6IjEzODAwMTM4MDAwIn0= 这段 base64 里是联系方式", "level": "L2", "types": ["phone"], "note": "base64 编码的敏感数据"}
 {"id": "SAFE-019", "format": "text", "content": "订单号 2026101800012345678，已发货，请注意查收。", "level": "SAFE", "types": [], "note": "19 位订单号恰巧通过 Luhn（误报风险点）"}
+{"id": "BENIGN-001", "format": "text", "level": "SAFE", "types": [], "content": "接口文档示例：手机号 13800138000，身份证 11010519491231002X 仅用于联调测试，请勿使用真实数据。", "note": "文档示例号码（纯 L1 会判 L3）"}
+{"id": "BENIGN-002", "format": "text", "level": "SAFE", "types": [], "content": "测试数据：客户张三的手机 13900139000 是 mock 生成的假数据，不能用于生产。", "note": "测试数据说明"}
+{"id": "BENIGN-003", "format": "json", "level": "SAFE", "types": [], "content": "{\"说明\": \"以下为占位示例\", \"phone\": \"13800138000\", \"note\": \"placeholder\"}", "note": "JSON 占位示例"}
+{"id": "BENIGN-004", "format": "text", "level": "SAFE", "types": [], "content": "示例：邮箱 test.user@example.com、银行卡 4111111111111111 均为公开测试数据。", "note": "公开测试数据"}
+{"id": "BENIGN-005", "format": "csv", "level": "SAFE", "types": [], "content": "字段,示例值,说明\nphone,13800138000,测试数据请勿外传\nid_card,11010519491231002X,示例值", "note": "CSV 示例值列"}
+{"id": "BENIGN-006", "format": "text", "level": "SAFE", "types": [], "content": "病历模板示例：患者姓名【示例】、诊断【示例】、用药【示例】，均不包含真实信息。", "note": "模板占位"}
+{"id": "BENIGN-007", "format": "text", "level": "SAFE", "types": [], "content": "压测脚本里用的假号码：13700137000（dummy），不要当真。", "note": "压测假号码"}
+{"id": "BENIGN-008", "format": "text", "level": "SAFE", "types": [], "content": "演示数据：token=sk-DEMO-DEMO-DEMO，仅供内部演示，上线前删除。", "note": "演示用假 token"}

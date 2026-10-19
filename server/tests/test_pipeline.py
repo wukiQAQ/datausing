@@ -127,3 +127,72 @@ def test_safe_text_yields_no_finding() -> None:
 
 def test_sha256_text_is_stable() -> None:
     assert sha256_text("abc") == sha256_text("abc") and len(sha256_text("abc")) == 64
+
+class BenignSemantic:
+    """假的 L2：判"这是示例数据"，置信度可配。"""
+
+    name = "benign-l2"
+
+    def __init__(self, confidence: float) -> None:
+        self.confidence = confidence
+
+    def available(self) -> bool:
+        return True
+
+    def predict(self, text: str) -> list[SemanticHit]:
+        return [SemanticHit(type=None, confidence=self.confidence, benign=True)]
+
+
+def test_l2_benign_suppresses_phone_level() -> None:
+    """只有手机号时 L1 判 L2；L2 确认为示例数据后应压回 SAFE。"""
+    text = "示例号码 13800138000 仅用于联调测试"
+    l1 = DetectionPipeline().analyze_text(text, DetectOptions())
+    assert l1 is not None and l1.level == Level.MID
+
+    suppressed = DetectionPipeline(semantic=BenignSemantic(0.9)).analyze_text(
+        text, DetectOptions(enable_l2=True)
+    )
+    assert suppressed is not None
+    assert suppressed.level == Level.SAFE
+    assert suppressed.model_chain == "l1>l2"
+    assert any(item["type"] == "l2_benign" for item in suppressed.confidence_vector)
+
+
+def test_l2_benign_does_not_suppress_direct_with_low_confidence() -> None:
+    """证件号是直达高危：L2 置信度不够高时不许压制（宁误报勿漏报）。"""
+    text = "身份证 11010519491231002X"
+    finding = DetectionPipeline(semantic=BenignSemantic(0.8)).analyze_text(
+        text, DetectOptions(enable_l2=True)
+    )
+    assert finding is not None
+    assert finding.level == Level.HIGH
+
+
+def test_l2_benign_suppresses_direct_when_very_confident() -> None:
+    """L2 非常确信"这是示例"时，直达高危也允许压下去，并取消 direct 标记。"""
+    text = "示例：身份证 11010519491231002X 仅为演示数据"
+    finding = DetectionPipeline(semantic=BenignSemantic(0.95)).analyze_text(
+        text, DetectOptions(enable_l2=True)
+    )
+    assert finding is not None
+    assert finding.level.severity < Level.HIGH.severity
+    assert finding.direct is False
+
+
+def test_l2_context_uses_document_text() -> None:
+    """JSON 里"示例"线索在别的字段，L2 应拿到文档级上下文而不是只看单个值。"""
+
+    class ContextAware:
+        name = "ctx-l2"
+
+        def available(self) -> bool:
+            return True
+
+        def predict(self, text: str) -> list[SemanticHit]:
+            return [SemanticHit(type=None, confidence=0.95, benign=True)] if "示例" in text else []
+
+    document = parse_json('{"说明":"以下为示例数据","phone":"13800138000"}')
+    report = DetectionPipeline(semantic=ContextAware()).analyze_document(
+        document, DetectOptions(enable_l2=True)
+    )
+    assert all(finding.level == Level.SAFE for finding in report.findings)

@@ -30,6 +30,46 @@ from .parsers import ParseError, parse_csv, parse_json, parse_sql, parse_text
 
 LEVELS: tuple[str, ...] = ("L3", "L2", "L1", "SAFE")
 
+
+class MockSemanticAdapter:
+    """把 L2 服务的 MockBackend 包成 ``SemanticClassifier``，用于离线对比 L2 增益。
+
+    直接注入流水线（不经过 HTTP），指标只反映"流水线与 L2 后端的协同逻辑"；
+    真实模型接入后用 ``--enable-l2`` 指向 HTTP 服务复跑同一套指标即可对比。
+    """
+
+    name = "l2-mock"
+
+    def __init__(self) -> None:
+        from l2_service.backends import MockBackend  # 同仓可选包，延迟导入避免循环
+
+        self._backend = MockBackend()
+
+    def available(self) -> bool:
+        return True
+
+    def predict(self, text: str) -> list[Any]:
+        from .identify.l2 import SemanticHit
+
+        prediction = self._backend.predict([text])[0]
+        hits: list[Any] = []
+        if prediction.benign > 0:
+            hits.append(SemanticHit(type=None, confidence=prediction.benign, benign=True))
+        for item in prediction.types:
+            try:
+                entity = EntityType(item.type)
+            except ValueError:
+                continue
+            hits.append(SemanticHit(type=entity, confidence=item.confidence))
+        return hits
+
+
+def build_pipeline(use_mock_l2: bool = False) -> DetectionPipeline:
+    """按评测模式构造流水线：默认按配置（L1 only），mock 模式注入内置 L2 后端。"""
+    if not use_mock_l2:
+        return DetectionPipeline.from_settings(get_settings())
+    return DetectionPipeline(semantic=MockSemanticAdapter())
+
 _PARSERS: dict[str, Callable[[str], Any]] = {
     "text": parse_text,
     "json": parse_json,
@@ -346,6 +386,35 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
                 f"{', '.join(row['gold_types']) or '—'} | {', '.join(row['pred_types']) or '—'} | {row['note']} |"
             )
     lines.append("")
+    compare = meta.get("compare")
+    if compare:
+        l1, l2 = compare["l1"], compare["l2"]
+        lines.append("## 5.1 多模型协同对比（L1 only vs L1 + L2 mock）")
+        lines.append("")
+        lines.append("| 指标 | L1 only | L1 + L2（mock） | 变化 |")
+        lines.append("| --- | ---: | ---: | ---: |")
+
+        def delta(before: float, after: float, suffix: str = "") -> str:
+            diff = after - before
+            arrow = "↑" if diff > 1e-9 else ("↓" if diff < -1e-9 else "→")
+            return f"{arrow} {diff * 100:+.1f}{suffix}"
+
+        rows = [
+            ("分级准确率", l1["accuracy"], l2["accuracy"], ""),
+            ("分级 Macro-F1", l1["macro_f1"], l2["macro_f1"], ""),
+            ("类别 Micro-F1", l1["type_micro"]["f1"], l2["type_micro"]["f1"], ""),
+            ("高危漏检率", l1["critical_miss_rate"], l2["critical_miss_rate"], ""),
+            ("安全误报率", l1["false_positive_rate"], l2["false_positive_rate"], ""),
+        ]
+        for name, before, after, suffix in rows:
+            lines.append(f"| {name} | {before * 100:.1f}% | {after * 100:.1f}% | {delta(before, after, suffix)} |")
+        lines.append("")
+        lines.append(
+            "- L2(mock) 是**词表+上下文标记的占位实现**，用于验证「语义复核/示例数据判定」这条链路的价值；"
+            "接真 RoBERTa 权重后复跑 `--enable-l2`，这张表就是模型增益的实测依据。"
+        )
+        lines.append("")
+
     lines.append("## 6. 口径与局限（如实说明）")
     lines.append("")
     lines.append(
@@ -353,8 +422,12 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
         "标签遵循需求 v2 的分级策略；指标反映「实现与策略的一致性」与「困难样本判别力」，不等同于公开数据集上的绝对水平。"
     )
     lines.append(
-        "- 默认只跑 **L1（规则 + 校验算法）**：不需要模型、任何机器可复现；L2/L3 的增益需用 "
-        "`--enable-l2/--enable-l3` 在接入推理服务后单独对比。"
+        "- 默认只跑 **L1（规则 + 校验算法）**：不需要模型、任何机器可复现；L2/L3 的增益用 "
+        "`--compare-l2`（内置 mock 后端）或 `--enable-l2`（指向真实 L2 服务）单独对比。"
+    )
+    lines.append(
+        "- 评测集里刻意放了一批「文档/测试示例中的形似号码」（标注 SAFE）：真实业务里它们不需要脱敏，"
+        "但纯规则会被形状骗到——这正是 L2 语义复核的增益来源。"
     )
     lines.append(
         "- 目前语料以中文业务文本/JSON/CSV/SQL 为主，样本量适中；扫描件 PDF、图片里的文字不在本轮范围。"
@@ -366,6 +439,20 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
     return "\n".join(lines)
 
 
+def _mode_label(args: argparse.Namespace) -> str:
+    """把命令行开关翻译成报告里的模式名。"""
+    if args.compare_l2:
+        return "L1 only vs L1 + L2(mock)"
+    if args.enable_l2_mock:
+        return "L1 + L2(mock)"
+    parts = ["L1"]
+    if args.enable_l2:
+        parts.append("L2(HTTP)")
+    if args.enable_l3:
+        parts.append("L3")
+    return " + ".join(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="FlowMask 自建评测集跑分")
     # 默认值按仓库布局推导：数据集在 server/eval/，报告放仓库根的 docs/（与设计文档同处）
@@ -374,20 +461,41 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dataset", default=server_dir / "eval/dataset.jsonl", type=Path)
     parser.add_argument("--report", default=repo_root / "docs/评测报告.md", type=Path)
     parser.add_argument("--json-out", default=server_dir / "eval/latest.json", type=Path)
-    parser.add_argument("--enable-l2", action="store_true")
-    parser.add_argument("--enable-l3", action="store_true")
+    parser.add_argument("--enable-l2", action="store_true", help="调用 HTTP L2 服务（需先启动 l2_service）")
+    parser.add_argument("--enable-l3", action="store_true", help="调用本地大模型复核（需 Ollama）")
+    parser.add_argument(
+        "--enable-l2-mock",
+        action="store_true",
+        help="用内置 mock L2 后端（不启服务）跑升级链路，用于离线增益对比",
+    )
+    parser.add_argument(
+        "--compare-l2",
+        action="store_true",
+        help="同时跑 L1 only 与 L1+L2(mock)，在报告里输出对比表",
+    )
     args = parser.parse_args(argv)
 
-    options = DetectOptions(enable_l2=args.enable_l2, enable_l3=args.enable_l3)
-    summary, details = evaluate(args.dataset, options=options)
+    compare: dict[str, Any] | None = None
+    if args.compare_l2:
+        base_summary, _ = evaluate(args.dataset, options=DetectOptions(), pipeline=build_pipeline())
+        l2_summary, details = evaluate(
+            args.dataset, options=DetectOptions(enable_l2=True), pipeline=build_pipeline(use_mock_l2=True)
+        )
+        summary = l2_summary
+        compare = {"l1": base_summary, "l2": l2_summary}
+    else:
+        use_mock = args.enable_l2_mock
+        options = DetectOptions(enable_l2=args.enable_l2 or use_mock, enable_l3=args.enable_l3)
+        summary, details = evaluate(args.dataset, options=options, pipeline=build_pipeline(use_mock))
 
     from datetime import datetime
 
     meta = {
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
         "dataset": str(args.dataset),
-        "mode": "L1 + L2 + L3" if args.enable_l2 and args.enable_l3 else ("L1 + L2" if args.enable_l2 else "L1 only"),
-        "command": "cd server && python -m app.evaluate",
+        "mode": _mode_label(args),
+        "command": "cd server && python -m app.evaluate --compare-l2",
+        "compare": compare,
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(

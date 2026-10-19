@@ -26,11 +26,17 @@ from .types import EntityType
 
 @dataclass(slots=True)
 class SemanticHit:
-    """L2 给出的类别级判定（不定位到字符区间，定位仍由 L1 负责）。"""
+    """L2 给出的判定（不定位到字符区间，定位仍由 L1 负责）。
 
-    type: EntityType
+    - ``benign=False``：命中某个敏感类别，置信度在 ``confidence``；
+    - ``benign=True``：这段文本更像"示例/测试数据"，``type`` 为空，
+      ``confidence`` 是"判为非敏感"的置信度，用于压制 L1 的形似误报。
+    """
+
+    type: EntityType | None
     confidence: float
     source: str = "l2"
+    benign: bool = False
 
 
 class SemanticClassifier(Protocol):
@@ -69,8 +75,14 @@ class HttpSemanticClassifier:
         except (urllib.error.URLError, TimeoutError, ValueError, OSError):
             return []
 
+        if body.get("degraded"):
+            return []
+
         hits: list[SemanticHit] = []
         for item in body.get("items", []):
+            benign = float(item.get("benign") or 0.0)
+            if benign > 0:
+                hits.append(SemanticHit(type=None, confidence=benign, benign=True))
             for entry in item.get("types", []):
                 try:
                     entity = EntityType(entry["type"])

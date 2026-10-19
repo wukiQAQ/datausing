@@ -29,6 +29,13 @@ from .types import EntityType, Hit, Level, Result, entity_label
 
 L2_MIN_CONFIDENCE = 0.70
 L2_SCORE_BONUS = 0.05
+# L2 判"非敏感"的最小置信度，以及据此的分数压制力度：
+# 压制是乘性的，0.9 上限保证"很确信是示例数据"时能把 L2 级形似号码压回 SAFE。
+L2_BENIGN_MIN_CONFIDENCE = 0.75
+L2_BENIGN_MAX_PENALTY = 0.90
+# 高危直达类（证件/银行卡/密钥）默认不压制（宁误报勿漏报）；
+# 只有当 L2 非常确信"这是示例数据"时才允许压制，阈值更高。
+L2_BENIGN_DIRECT_MIN_CONFIDENCE = 0.90
 AMBIGUOUS_MIN = 0.25
 AMBIGUOUS_MAX = 0.85
 
@@ -36,6 +43,25 @@ AMBIGUOUS_MAX = 0.85
 def sha256_text(text: str) -> str:
     """原文指纹：写库/审计只存哈希，不存原文。"""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+MAX_L2_CONTEXT_CHARS = 4000
+
+
+def _document_context(document: Document) -> str:
+    """把整份文档拼成 L2 的上下文（截断控制成本）：键名 + 值都要，只看值会丢线索。"""
+    parts: list[str] = []
+    used = 0
+    for segment in document.segments:
+        piece = segment.text
+        if segment.hint:
+            piece = f"{segment.hint}: {piece}"
+        if used + len(piece) > MAX_L2_CONTEXT_CHARS:
+            parts.append(piece[: max(MAX_L2_CONTEXT_CHARS - used, 0)])
+            break
+        parts.append(piece)
+        used += len(piece)
+    return "\n".join(parts)
 
 
 def _rebase_result(
@@ -70,6 +96,13 @@ def _rebase_result(
     rebased = score(hits)
     rebased.extra_evidence = list(result.extra_evidence)
     rebased.degraded = result.degraded
+    if result.score_scale != 1.0:
+        rebased.score_scale = result.score_scale
+        rebased.score = round(min(rebased.score * result.score_scale, 1.0), 3)
+        # 压制后沿用链路里的直接标记（已被 L2 否决时 direct=False），
+        # 否则重算会把直达高危又加回来，压制白做。
+        rebased.direct = result.direct
+        rebased.level = level_for(rebased.score, rebased.direct)
     return rebased
 
 
@@ -162,8 +195,11 @@ class DetectionPipeline:
         by_level = {level.value: 0 for level in Level}
         degraded = False
 
+        # 文档级上下文：JSON/CSV/SQL 的线索词（"示例""测试"）可能不在同一个值里，
+        # 传给 L2 让它按整份文档判断"这是文档示例还是真实数据"。
+        context = _document_context(document)
         for segment in document.segments:
-            finding = self.analyze_segment(segment, options)
+            finding = self.analyze_segment(segment, options, l2_context=context)
             if finding is None:
                 continue
             degraded = degraded or finding.degraded
@@ -185,7 +221,12 @@ class DetectionPipeline:
     def analyze_text(self, text: str, options: DetectOptions) -> SegmentFinding | None:
         return self.analyze_segment(Segment(path="$", text=text, offset=0), options)
 
-    def analyze_segment(self, segment: Segment, options: DetectOptions) -> SegmentFinding | None:
+    def analyze_segment(
+        self,
+        segment: Segment,
+        options: DetectOptions,
+        l2_context: str | None = None,
+    ) -> SegmentFinding | None:
         # 结构化数据（JSON/CSV/SQL）把字段名拼到值前面一起检测：
         # 字段名是语义上下文（"api_key"、"身份证号"、"password"），没有它，
         # 裸值只能靠形态猜，误判与漏判都会明显上升。
@@ -195,7 +236,7 @@ class DetectionPipeline:
         # 但脱敏与落库仍以原文为准：偏移通过 index_map 映射回去
         normalized, index_map = normalize_with_map(segment.text)
         normalized_changed = normalized != segment.text
-        result, model_chain, reason = self._run_chain(prefix + normalized, options)
+        result, model_chain, reason = self._run_chain(prefix + normalized, options, l2_context)
         if prefix or normalized_changed:
             result = _rebase_result(
                 result,
@@ -232,20 +273,41 @@ class DetectionPipeline:
         )
 
     # ---- 内部：三级链路 -------------------------------------------------
-    def _run_chain(self, text: str, options: DetectOptions) -> tuple[Result, str, str | None]:
+    def _run_chain(
+        self,
+        text: str,
+        options: DetectOptions,
+        l2_context: str | None = None,
+    ) -> tuple[Result, str, str | None]:
         result = analyze_l1(text)
         chain = ["l1"]
         reason: str | None = None
 
         if options.enable_l2 and self.semantic is not None and self.semantic.available():
-            if result.level in (Level.SAFE, Level.LOW) or not result.direct:
+            # L2 只处理 L1 命中的样本：直达高危也要过一遍语义复核，
+            # 否则"文档里的示例证件号"这类形似误报永远压不下去。
+            if result.hits:
                 try:
-                    semantic_hits = self.semantic.predict(text)
+                    # 文档级上下文优先：JSON/CSV 的每个值单独看没有"示例"线索，
+                    # 把整份文档的文本给 L2，才能判断"这段是文档示例还是真实数据"。
+                    semantic_hits = self.semantic.predict(l2_context or text)
                 except Exception:  # 推理服务异常一律降级，不打断主链路
                     semantic_hits = []
                     result.degraded = True
                 if semantic_hits:
-                    result = _merge_l2(result, semantic_hits)
+                    benign = [hit for hit in semantic_hits if hit.benign]
+                    typed = [hit for hit in semantic_hits if not hit.benign]
+                    if benign:
+                        strongest = max(hit.confidence for hit in benign)
+                        threshold = (
+                            L2_BENIGN_DIRECT_MIN_CONFIDENCE
+                            if result.direct
+                            else L2_BENIGN_MIN_CONFIDENCE
+                        )
+                        if strongest >= threshold:
+                            result = _apply_l2_benign(result, strongest)
+                    if typed:
+                        result = _merge_l2(result, typed)
                     chain.append("l2")
 
         ambiguous = AMBIGUOUS_MIN <= result.score < AMBIGUOUS_MAX and not result.direct
@@ -275,12 +337,38 @@ class DetectionPipeline:
         return result, ">".join(chain), reason
 
 
+def _apply_l2_benign(result: Result, confidence: float) -> Result:
+    """L2 判"示例/测试数据"时按置信度压制分数。
+
+    为什么是乘性压制而不是直接置 SAFE：模型也可能错，乘性压制在低置信度时温和、
+    高置信度时接近归零，留出可调空间；压制依据写进 ``extra_evidence``，可审计、可复算。
+    """
+    if confidence < L2_BENIGN_MIN_CONFIDENCE:
+        return result
+    penalty = min(confidence, L2_BENIGN_MAX_PENALTY)
+    result.score_scale = round(result.score_scale * (1.0 - penalty), 4)
+    result.score = round(result.score * (1.0 - penalty), 3)
+    # 语义否决后取消"极端类别直达"：直达是给"宁误报勿漏报"用的兜底，
+    # 既然 L2 已判定这是示例数据，就不该再靠直达把级别钉死在高危。
+    result.direct = False
+    result.level = level_for(result.score, result.direct)
+    result.extra_evidence.append(
+        {
+            "type": "l2_benign",
+            "confidence": round(confidence, 4),
+            "weight": 0.0,
+            "rule": "l2-benign",
+        }
+    )
+    return result
+
+
 def _merge_l2(result: Result, semantic_hits: list[SemanticHit]) -> Result:
     """把 L2 的类别置信度并入 L1 结果：补类别、加少量分数、记录证据。"""
     updated_types = list(result.types)
     bonus = 0.0
     for hit in semantic_hits:
-        if hit.confidence < L2_MIN_CONFIDENCE:
+        if hit.benign or hit.type is None or hit.confidence < L2_MIN_CONFIDENCE:
             continue
         if hit.type not in updated_types:
             updated_types.append(hit.type)
