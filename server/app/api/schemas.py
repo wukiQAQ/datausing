@@ -196,3 +196,31 @@ class HealthOut(BaseModel):
     enable_l2: bool
     enable_l3: bool
     uptime_s: int
+
+class DynamicRenderIn(BaseModel):
+    """动态脱敏渲染请求：同一段文本，按是否授权返回两种视图。"""
+
+    text: str = Field(min_length=1, max_length=20000)
+    authorized: bool = False
+    mask_level: str | None = Field(default=None, description="可选：强制按该级别脱敏（L3/L2/L1/SAFE）")
+
+
+class DynamicRenderOut(BaseModel):
+    authorized: bool
+    policy: str
+    level: str
+    level_label: str
+    color: str
+    score: float
+    types: list[str]
+    type_labels: list[str]
+    spans: list[SpanOut] = Field(default_factory=list)
+    masked: str
+    text: str
+    model_chain: str
+    operator_id: str
+    note: str
+
+
+class PolicyOut(BaseModel):
+    levels: list[dict[str, object]]

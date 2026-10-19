@@ -92,6 +92,7 @@
     <button data-tab="tasks">任务与审计链</button>
     <button data-tab="stats">统计看板</button>
     <button data-tab="rules">识别规则</button>
+    <button data-tab="dynamic">动态脱敏 · 授权切换</button>
   </nav>
 
   <!-- 即时检测 -->
@@ -207,6 +208,42 @@
       <div id="rules" class="empty">加载中…</div>
     </div>
   </section>
+
+  <!-- 动态脱敏：同一段文本，按授权返回原文或脱敏副本 -->
+  <section id="tab-dynamic" hidden>
+    <div class="card">
+      <div class="flexline">
+        <h3 style="margin:0">动态脱敏视图（原文不落库，按授权切换）</h3>
+        <label class="muted"><input type="checkbox" id="dyn-auth" /> 授权查看原文（留审计痕迹）</label>
+      </div>
+      <textarea id="dyn-input" style="min-height:120px">客户张三，手机 13800138000，身份证 11010519491231002X，收货地址：福建省福州市鼓楼区五四路 100 号。</textarea>
+      <div class="row">
+        <label class="muted">强制级别
+          <select id="dyn-mask-level">
+            <option value="">按实际分级</option>
+            <option value="L3">L3 全屏蔽</option>
+            <option value="L2">L2 首字符</option>
+            <option value="L1">L1 警示</option>
+          </select>
+        </label>
+        <label class="muted">操作人 <input type="text" id="dyn-operator" value="auditor" style="width:100px" /></label>
+        <button class="primary" id="btn-dyn">渲染</button>
+        <span class="muted">未授权时右侧原文区不显示真实内容</span>
+      </div>
+      <div class="compare" style="margin-top:12px">
+        <div class="pane"><div class="pane-title">脱敏副本（未授权可见）</div><pre id="dyn-masked">—</pre></div>
+        <div class="pane"><div class="pane-title">原文（授权后可见，命中高亮）</div><pre id="dyn-orig">—</pre></div>
+      </div>
+      <div id="dyn-meta" class="muted" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="flexline">
+        <h3 style="margin:0">脱敏策略表（可解释、可审计）</h3>
+        <button class="ghost" id="btn-dyn-policy">刷新</button>
+      </div>
+      <div id="dyn-policy" class="empty">加载中…</div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -242,12 +279,26 @@ function esc(s) {
 document.querySelectorAll("nav button").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b === btn));
-    ["detect", "tasks", "stats", "rules"].forEach((name) => { $("tab-" + name).hidden = name !== btn.dataset.tab; });
+    ["detect", "tasks", "stats", "rules", "dynamic"].forEach((name) => {
+      $("tab-" + name).hidden = name !== btn.dataset.tab;
+    });
     if (btn.dataset.tab === "tasks") loadTasks();
     if (btn.dataset.tab === "stats") loadStats();
     if (btn.dataset.tab === "rules") loadRules();
+    if (btn.dataset.tab === "dynamic") {
+      loadDynamicPolicy();
+      renderDynamic();
+    }
   });
 });
+
+// 支持 #dynamic / #stats 这类锚点直达（演示脚本与截图都靠它）
+(() => {
+  const initial = location.hash.replace("#", "");
+  if (!initial) return;
+  const btn = document.querySelector(`nav button[data-tab="${initial}"]`);
+  if (btn) btn.click();
+})();
 
 /* ---------- 即时检测 ---------- */
 function highlight(text, spans) {
@@ -504,6 +555,56 @@ $("btn-refresh-tasks").addEventListener("click", () => { loadTasks(); loadAudit(
 $("btn-audit-verify").addEventListener("click", loadAudit);
 $("btn-refresh-stats").addEventListener("click", loadStats);
 $("btn-refresh-rules").addEventListener("click", loadRules);
+$("btn-dyn").addEventListener("click", renderDynamic);
+$("btn-dyn-policy").addEventListener("click", loadDynamicPolicy);
+$("dyn-auth").addEventListener("change", renderDynamic);
+
+/* ---------- 动态脱敏 ---------- */
+async function renderDynamic() {
+  const text = $("dyn-input").value;
+  if (!text.trim()) return;
+  const payload = {
+    text,
+    authorized: $("dyn-auth").checked,
+    mask_level: $("dyn-mask-level").value || null,
+  };
+  const operator = $("dyn-operator").value.trim() || "auditor";
+  try {
+    const body = await api("/dynamic/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Operator-Id": operator },
+      body: JSON.stringify(payload),
+    });
+    $("dyn-masked").textContent = body.masked || "（无命中）";
+    // 未授权时右侧不展示原文，避免"点一下就泄露"；授权后才高亮原文
+    $("dyn-orig").innerHTML = body.authorized
+      ? highlight(text, body.spans)
+      : '<span class="muted">未授权：开启上方「授权查看原文」后显示，并写入审计链。</span>';
+    const types = body.type_labels && body.type_labels.length ? body.type_labels.join("、") : "—";
+    $("dyn-meta").textContent =
+      `${body.level_label}（${body.level}）· 分数 ${body.score} · 策略 ${body.policy} · 命中 ${types} · ${body.note}`;
+    loadAudit();
+  } catch (err) {
+    $("dyn-meta").innerHTML = `<span class="err">渲染失败：${esc(err.message)}</span>`;
+  }
+}
+
+async function loadDynamicPolicy() {
+  try {
+    const body = await api("/dynamic/policy");
+    const rows = body.levels
+      .map(
+        (row) => `<tr><td><span class="badge ${row.level}">${row.level}</span> ${esc(row.label)}</td>` +
+          `<td>${esc(row.without_auth)}</td><td>${esc(row.with_auth)}</td></tr>`
+      )
+      .join("");
+    $("dyn-policy").className = "";
+    $("dyn-policy").innerHTML =
+      `<table><thead><tr><th>级别</th><th>未授权</th><th>授权后</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (err) {
+    $("dyn-policy").innerHTML = `<span class="err">加载失败：${esc(err.message)}</span>`;
+  }
+}
 
 (async function init() {
   try {
@@ -519,6 +620,7 @@ $("btn-refresh-rules").addEventListener("click", loadRules);
   if ($("input").value.trim()) {
     detectText();
   }
+  loadDynamicPolicy();
 })();
 </script>
 </body>

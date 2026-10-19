@@ -84,7 +84,8 @@ def append_entry(
     """追加一条审计记录：读取链头哈希 → 计算本条哈希 → 签名 → 插入。"""
     settings = get_settings()
     payload = {
-        "task_id": task_id,
+        # 统一转字符串：列在 SQLite 里是 TEXT，写入用 int、读回是 str 会导致校验哈希不一致
+        "task_id": str(task_id),
         "input_hash": input_hash,
         "output_hash": output_hash,
         "model_chain": model_chain,

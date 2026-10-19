@@ -28,6 +28,7 @@ from .api.routes_audit import router as audit_router
 from .api.routes_detect import router as detect_router
 from .api.routes_findings import router as findings_router
 from .api.routes_health import router as health_router
+from .api.routes_dynamic import router as dynamic_router
 from .api.routes_rules import router as rules_router
 from .api.routes_rules import sync_active_rules
 from .api.routes_stats import router as stats_router
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
         stats_router,
         rules_router,
         audit_router,
+        dynamic_router,
     ):
         router.include_router(sub)
     app.include_router(router)
