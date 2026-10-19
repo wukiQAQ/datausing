@@ -54,7 +54,37 @@ def test_ui_page_and_root_redirect(client) -> None:
     assert "FlowMask" in page.text and "左右对照" in page.text
     redirect = client.get("/", follow_redirects=False)
     assert redirect.status_code in {302, 307}
+    # 构建过正式前端（web/dist）时优先跳 /app/，否则回落到自带单页 /ui
+    assert redirect.headers["location"] in {"/ui", "/app/"}
+
+
+def test_frontend_dist_is_optional(monkeypatch) -> None:
+    """未构建正式前端时必须优雅降级：没有 /app 挂载，根路径回落到 /ui。"""
+    import app.main as main_module
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(main_module, "FRONTEND_DIR", main_module.Path("/nonexistent-flowmask-dist"))
+    fallback = TestClient(main_module.create_app())
+    assert fallback.get("/app/").status_code == 404
+    redirect = fallback.get("/", follow_redirects=False)
     assert redirect.headers["location"] == "/ui"
+
+
+def test_frontend_serves_built_assets() -> None:
+    """构建过正式前端时 /app/ 能直接打开（Vue3 页面），无构建环境则跳过。"""
+    from pathlib import Path
+
+    import pytest
+    from fastapi.testclient import TestClient
+
+    import app.main as main_module
+
+    dist = Path(main_module.__file__).resolve().parents[2] / "web" / "dist"
+    if not dist.is_dir():
+        pytest.skip("未构建 web/dist，跳过正式前端静态资源用例")
+    page = TestClient(main_module.create_app()).get("/app/")
+    assert page.status_code == 200
+    assert "<div id=\"app\">" in page.text
 
 
 def test_detect_file(client) -> None:

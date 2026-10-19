@@ -37,6 +37,9 @@ from .core.config import get_settings
 from .core.db import get_database
 
 WEBUI_DIR = Path(__file__).resolve().parent / "webui"
+# 正式前端（Vue3 + Element Plus + ECharts）：构建产物在 server/web/dist，
+# 未构建时优雅降级到自带单页控制台，保证任何环境下都能演示。
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 DESCRIPTION = """
 FlowMask：网络与文档流量的分级脱敏与审计溯源系统（数据安全作品赛）。
@@ -94,12 +97,18 @@ def create_app() -> FastAPI:
         router.include_router(sub)
     app.include_router(router)
 
+    # 正式前端：Vue3 + Element Plus + ECharts，构建产物挂在 /app
+    # （vite base=/app/，所以刷新/深链都不会 404）
+    if FRONTEND_DIR.is_dir():
+        app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
     # 自带控制台：纯静态单页（无构建步骤、无外网依赖），评委打开根路径即可用
     app.mount("/ui", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
-        return RedirectResponse(url="/ui")
+        # 构建过正式前端就优先跳转，否则回到自带单页
+        return RedirectResponse(url="/app/" if FRONTEND_DIR.is_dir() else "/ui")
 
     return app
 
