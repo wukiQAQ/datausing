@@ -20,7 +20,8 @@
 | 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 75 条；L1 only 准确率 89.3%，接 L2 后 98.7%、安全误报率 25.9%→0.0%，`--compare-l2` 一条命令复现 |
-| 静态/动态脱敏模式切换 | 🚧 | 算子已就绪，UI 开关与演示流程待接 |
+| 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
+| L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据生成（875 条，含评测集并入）、数据体检、微调脚本、`labels.json` 契约；真权重训练需本机装 torch（8GB 显存够） |
 
 ## 2. 快速开始
 
@@ -108,6 +109,8 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET/POST/PATCH/DELETE | `/rules` `/rules/{id}` | 规则查询、新增、启停、删除（内置规则可启停不可删） |
 | GET | `/audit` | 审计日志分页 |
 | GET | `/audit/verify` | 校验哈希链（返回是否完整、断链位置） |
+| GET | `/dynamic/policy` | 动态脱敏策略表（四级各自的未授权/授权行为） |
+| POST | `/dynamic/render` | 动态脱敏渲染：`{text, authorized, mask_level?}`；每次渲染写审计链 |
 | GET | `/audit/export?format=jsonl\|json\|csv` | 审计导出 |
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。

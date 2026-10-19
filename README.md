@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、58 个测试通过 | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/ui/` 直接看左右对照 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、106 个测试通过 | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/ui/` 直接看左右对照 |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
 ```text
@@ -39,8 +39,9 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 自定义规则 | 增删启停 + 正则可校验，库内持久化并即时生效 | ✅ |
 | 差分隐私 / l-多样性 | Laplace 噪声、数值泛化、l-多样性检查（已接口化） | ✅ |
 | 单页可视化 | `GET /ui/`：上传/粘贴 → 左右对照 + 分级统计，零前端依赖 | ✅ |
-| 动态脱敏模式开关 | 算子已就绪，UI 开关与授权流程待接 | 🚧 |
+| 动态脱敏视图（授权切换） | `POST /api/v1/dynamic/render` + `/dynamic/policy`：未授权只给脱敏副本、授权返回原文并写审计链；内置页面「动态脱敏」页签可直接演示 | ✅ |
 | 评测集与指标 | 自建标注集 75 条：L1 only 准确率 89.3% → 接 L2 后 **98.7%**、安全误报率 **25.9%→0.0%**、高危漏检率 0.0%，`--compare-l2` 一键复跑 | ✅ |
+| L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 875 条、数据体检、微调脚本与 `labels.json` 契约；真权重训练需装 torch（8GB 显存够） | ✅ |
 ## 网络流量扩展（阶段一成果，Go 采集端）
 
 一句话：**旁路镜像流量 → 还原载荷 → 三级协同识别 → 四级分级脱敏 → 审计留痕与看板**，全程本地推理，数据不出机。
