@@ -1,4 +1,4 @@
-﻿# FlowMask Server（FastAPI 一体机）
+# FlowMask Server（FastAPI 一体机）
 
 > 文件/文档侧的分级脱敏与审计溯源服务：**上传或粘贴 → 多模型分级识别 → 四级脱敏 → 落库留痕 → 哈希链审计**。
 > 这是需求 v2（2026-10-19）的主链路实现；仓库里的 Go 采集端与 `cmd/flowmask` 保留为「网络流量旁路」扩展能力。
@@ -13,7 +13,7 @@
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
 | L2 语义识别（独立推理服务） | ✅ | 客户端+降级策略已接；`l2_service/` 提供 HTTP 服务（mock 后端已可跑通纠偏链路，真 RoBERTa 权重待接入） |
-| L3 本地大模型复核 | 🚧 | 已实现 Ollama `/api/generate` 客户端 + JSON 输出解析 + 超时降级；模型（Qwen3Guard-Stream 0.6B）待接入 |
+| L3 本地大模型复核 | ✅ | 独立 `l3_service`（Qwen3Guard-Gen-0.6B，1.5 GB 本地权重、CPU 可跑）：只对 L1 模糊样本给安全判定 + 中文解释，只在高危方向升级，异常即降级 |
 | 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
@@ -32,7 +32,7 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 119 个用例
+python -m pytest -q            # 143 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
 cd ../web && npm install && npm run build && cd ../server
@@ -87,17 +87,55 @@ python -m uvicorn app.main:app --port 8090
 | 安全误报率 | 25.9% | **0.0%** |
 | 高危漏检率 | 0.0% | 0.0% |
 
-## 4. 评测跑分
+## 4. L3 护栏服务（Qwen3Guard）
+
+第三级识别跑在独立进程里，职责是「复核 + 解释」而不是重新分级：
+
+```powershell
+# 1) 依赖 + 权重（国内走 ModelScope）
+python -m pip install torch transformers modelscope
+python -c "from modelscope import snapshot_download; print(snapshot_download('Qwen/Qwen3Guard-Gen-0.6B', local_dir='models/qwen3guard-gen-0.6b'))"
+
+# 2) 起服务（默认 127.0.0.1:8092）
+cd server && python -m l3_service
+
+# 3) 让一体机启用 L3
+$env:FLOWMASK_ENABLE_L3 = "1"
+$env:FLOWMASK_L3_ENDPOINT = "http://127.0.0.1:8092/v1/judge"
+```
+
+协同规则（`app/identify/pipeline.py`）：
+
+- 只对 **L1 命中且分数落在灰区（0.25~0.85）、且不是直达高危** 的样本调用，触发面窄；
+- 判定映射：`Unsafe→L3`、`Controversial→L2`、`Safe→SAFE`，但**只有 `Unsafe` 会真正升级级别**；
+  `Controversial/Safe` 仅记录理由与证据——实测放开"任意升级"会把分级准确率从 98.7% 拉低到 94.7%；
+- 服务超时/不可用 → `degraded=true`，结论继续用 L1/L2，不阻塞主链路。
+
+真权重实测（75 条评测集，CPU）：
+
+| 指标 | 数值 |
+| --- | ---: |
+| L3 触发条数 | 29/75（38.7%，评测集敏感样本密集；真实流量远低于此） |
+| 判定分布 | Safe 20 / Controversial 9 / Unsafe 0 |
+| 单条延迟 | 0.3~0.9 s（CPU 单条，含生成） |
+| 对分级的影响 | 0 次升级、0 次降级（策略限制），只贡献解释与证据 |
+| 分级准确率 | 仍为 **98.7%**（L1 + L2 提供，L3 不再加分也不扣分） |
+
+> 局限（写在明面上）：Qwen3Guard-Gen-0.6B 零样本对中文 PII 偏保守，几乎不判 Unsafe。
+> 它的价值在**可解释 + 兜底**；要让 L3 真正提升召回，需要 4B 权重或按本域标注微调，
+> 这部分列入下一步（见第 9 节）。
+
+## 5. 评测跑分
 
 ```powershell
 cd server
 python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 ```
 
-- 评测集：`eval/dataset.jsonl`（67 条，覆盖 text/JSON/CSV/SQL 与困难样本），标注口径见 [`eval/README.md`](eval/README.md)；
+- 评测集：`eval/dataset.jsonl`（**75 条**，覆盖 text/JSON/CSV/SQL、文档/测试示例负样本与困难样本），标注口径见 [`eval/README.md`](eval/README.md)；
 - 报告：自动写入 [`docs/评测报告.md`](../docs/评测报告.md)——总体指标、四级混淆矩阵、分级/类别 P-R-F1、判错样本清单；
-- 当前（L1 only）：分级准确率 **98.5%**、Macro-F1 **0.987**、类别 Micro-F1 **0.993**、高危漏检率 **0.0%**、L1 p95 **0.11 ms**；
-- 接入 L2/L3 后加 `--enable-l2 --enable-l3` 复跑，即可对比"多模型协同"的增益与代价。
+- 当前（L1 only）：分级准确率 **89.3%**、Macro-F1 **0.928**、高危漏检率 **0.0%**、L1 p95 **0.12 ms**；
+- 对比多模型协同：`python -m app.evaluate --compare-l2 --compare-l3` → L1 only 89.3% / **L1+L2(mock) 98.7%**（安全误报率 25.9% → 0.0%）；
 
 ### 接口一览（前缀 `/api/v1`）
 
@@ -127,7 +165,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。
 
-## 5. 配置（环境变量）
+## 6. 配置（环境变量）
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -138,13 +176,15 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | `FLOWMASK_ENABLE_L2` | `false` | 是否升级 L2 语义识别 |
 | `FLOWMASK_L2_ENDPOINT` | `http://127.0.0.1:8091/v1/classify` | BERT 推理服务地址 |
 | `FLOWMASK_ENABLE_L3` | `false` | 是否启用 L3 大模型复核 |
-| `FLOWMASK_L3_ENDPOINT` | `http://127.0.0.1:11434/api/generate` | Ollama 地址 |
-| `FLOWMASK_L3_MODEL` | `qwen3guard-stream-0.6b` | 模型名 |
+| `FLOWMASK_L3_MODE` | `http` | `http` 调独立服务；`ollama` 直连 Ollama |
+| `FLOWMASK_L3_ENDPOINT` | `http://127.0.0.1:8092/v1/judge` | L3 服务地址（`l3_service`） |
+| `FLOWMASK_L3_MODEL` | `qwen3guard-gen-0.6b` | 模型名（仅展示/日志用） |
+| `FLOWMASK_L3_MODEL_DIR` | `server/models/qwen3guard-gen-0.6b` | 本地权重目录（ModelScope 下载到此处） |
 | `FLOWMASK_L2_TIMEOUT_S` / `FLOWMASK_L3_TIMEOUT_S` | `0.5` / `5.0` | 秒；超时即降级并标记 `degraded` |
 | `FLOWMASK_MAX_UPLOAD_MB` | `20` | 上传大小上限 |
 | `FLOWMASK_CORS_ORIGINS` | 本机 5173/8080 | 允许跨域的前端地址，逗号分隔 |
 
-## 6. 代码结构
+## 7. 代码结构
 
 ```text
 server/
@@ -162,7 +202,7 @@ server/
       masking.py       四级脱敏模板
       types.py         Level/EntityType/Hit/Result 等基础类型
       l2.py            BERT 语义识别客户端（HTTP 契约 + 降级）
-      l3.py            Ollama 大模型复核（Qwen3Guard 风格）
+      l3.py            L3 客户端：调 `l3_service`（http）或直连 Ollama（ollama）
       operators.py     差分隐私 / l-多样性 / 泛化算子
       pipeline.py      编排：解析 → L1 → (L2) → (L3) → 分级 → 脱敏 → 证据打包
     tasks/
@@ -173,24 +213,31 @@ server/
     api/
       deps.py          鉴权、操作人、流水线单例
       schemas.py       请求/响应模型
-      routes_*.py      health/detect/tasks/findings/stats/rules/audit
-  tests/               108 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2 服务/训练侧、评测
+      routes_*.py      health/detect/tasks/findings/stats/rules/audit/dynamic/traffic
+  l2_service/          L2 语义推理服务（mock / onnx 后端 + /v1/classify）
+  l2_training/         自举数据集、弱标注、微调脚本
+  l3_service/          L3 护栏推理服务（mock / hf 后端 + /v1/judge，Qwen3Guard-Gen-0.6B）
+  samples/             自带示例抓包生成脚本与 demo-traffic.pcap
+  eval/                评测集（75 条）与评测说明
+  tests/               143 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入
   pyproject.toml
 web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
-  src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView
+  src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView / TrafficView
   src/api.js           接口封装（同源 /api/v1，开发态走 vite proxy 到 8090）
   src/highlight.js     命中区间高亮 + 脱敏副本渲染
 ```
 
-## 7. 设计要点（答辩口径）
+## 8. 设计要点（答辩口径）
 
 1. **原文不落库**：库里只存 `input_hash`（原文 SHA-256）、脱敏副本与哈希链字段；检索比对靠哈希，泄露风险最低。
-2. **分级识别按成本升级**：L1 微秒~毫秒级全量跑；只有 L1 模糊（分数落在 0.25~0.85 灰区）才升级 L2；只有 L2 仍不确定才送 L3。L2/L3 均可在配置里关掉，关掉即「纯规则模式」，链路不阻塞。
+2. **分级识别按成本升级**：L1 微秒~毫秒级全量跑；只有 L1 命中且分数落在 0.25~0.85 灰区的样本才送 L3 复核；L3 只在 `Unsafe` 时升级，`Controversial/Safe` 只记理由，避免小模型把低危抬成中危。L2/L3 均可在配置里关掉，关掉即「纯规则模式」，链路不阻塞。
 3. **失败即降级**：L2/L3 超时或不可用 → 保留 L1 结论并置 `degraded=true`，不让模型成为单点故障。
 4. **可复算可审计**：每条 finding 带 `rule_ids`、`confidence_vector`、`model_chain`、`reasons`；审计日志与 finding 一一对应，`prev_hash` 串成链，任何字段改动都会在 `/audit/verify` 暴露。
 5. **模块化便于扩展**：解析器、识别器、算子、导出格式都是小函数/协议 + 注册表，新增格式或模型不需改主流程。
 
-## 8. 下一步
+## 9. 下一步
 
-- 阶段二：L2 BERT 推理服务（`/v1/classify`）、评测集与指标（F1/分级准确率）、动态脱敏接 UI、看板图表增强。
-- 阶段三：动态脱敏（差分隐私/l-多样性开关）、pcap 旁路恢复、答辩材料与视频。
+- **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
+- **LLM 敏感度调优**：Qwen3Guard-Gen-0.6B 零样本偏保守，可换 4B 或按本域标注微调，让 L3 真正贡献召回；
+- **实时旁路**：把 pcap 文件导入升级为网卡实时抓包（Python 侧 raw socket / 复用 Go 采集端），`/traffic/*` 增加流式接口；
+- 交付侧：只保留开发与联调，答辩材料由他人负责。

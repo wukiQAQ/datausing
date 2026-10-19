@@ -1,4 +1,4 @@
-﻿# FlowMask · 分级脱敏与审计溯源系统
+# FlowMask · 分级脱敏与审计溯源系统
 
 > 福建省大学生数据安全大赛 · 自主命题（数据脱敏方向）参赛作品
 > **v2 主链路**：文档/文件/文本输入 → 多模型分级识别 → 四级脱敏 → 落库留痕 → 哈希链审计（Python FastAPI 一体机，见 [`server/README.md`](server/README.md)）
@@ -32,7 +32,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 能力 | 说明 | 状态 |
 | --- | --- | --- |
 | 多格式解析与分段定位 | 文本整段；JSON `$` 路径；CSV/TSV `row{n}.{列名}`；SQL 只取 DML 字面量（DDL 保留）；Word 段落/表格；PDF 按页 | ✅ |
-| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，mock 后端已跑通纠偏，真 RoBERTa 权重待接）；L3 Qwen3Guard 客户端与降级 ✅、模型待接 | 🚧 |
+| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，mock 后端跑通纠偏，真 RoBERTa 权重待训练）；L3 独立护栏服务 ✅（`server/l3_service/`，Qwen3Guard-Gen-0.6B 真权重 1.5 GB 已实测） | 🚧 |
 | 分级与赋权 | 加权最大 + 共现修正 + 极端类别直达 → L3/L2/L1/SAFE | ✅ |
 | 四级脱敏 + 命中区间 | 四级模板 + `spans` 区间，前端可高亮「原文 → 脱敏」对照 | ✅ |
 | 任务与落库 | 后台线程执行，`tasks`/`findings` 表，按级别/类别/任务查询 | ✅ |
@@ -71,7 +71,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | TCP 重组 + HTTP 解析 | 跨包 body 还原、Content-Type 分派、gzip/分块 | 🚧 |
 | findings 落库 + API | `dlp_findings` 表（SQLite/JSONL）、`/api/v1/dlp/findings`、`/stats`、`/export` | ✅ |
 | L2 语义识别 | bert-base-chinese 多标签（ONNX int8，CPU 5-20ms） | ⏳ |
-| L3 大模型复核 | 本地 Qwen2.5-3B（Ollama）只复核 L2/L3 样本，带超时熔断 | ⏳ |
+| L3 大模型复核 | 本地 Qwen3Guard-Gen-0.6B（`server/l3_service/`，1.5 GB 权重、CPU 0.3~0.9 s）只复核 L1 灰区样本，带超时降级 | ✅ |
 | 可视化看板 | 饼图/柱状/时间线 + 脱敏前后高亮对照 | ⏳ |
 | 告警联动 | 脱敏/拦截/放行 + Bearer Token 远程推送 | ⏳ |
 
@@ -87,7 +87,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
               ┌───────────────▼── 识别层（三级协同）──┐
               │ L1 规则+校验   <1ms，纯 Go           │
               │ L2 BERT/ONNX  5-20ms，仅升级 L1 命中  │
-              │ L3 本地 LLM   2-5s，仅复核 L2/L3，超时降级 │
+              │ L3 本地护栏 0.3-1s，仅复核灰区，超时降级   │
               │ 评分 → L3/L2/L1/SAFE  + 脱敏模板      │
               └───────────────┬──────────────────────┘
                               │
