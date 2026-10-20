@@ -154,10 +154,10 @@ python -m uvicorn app.main:app --port 8090
 | `FLOWMASK_L3_MODE=mock` | 不需要权重 | 启发式 | 测试 / 无权重演示 |
 
 ```powershell
-# 1) 依赖 + 权重（国内走 ModelScope）
+# 1) 依赖 + 权重
 python -m pip install torch transformers modelscope
-python -c "from modelscope import snapshot_download; print(snapshot_download('Qwen/Qwen2.5-1.5B-Instruct', local_dir='models/qwen2.5-1.5b-instruct'))"
-python -c "from modelscope import snapshot_download; print(snapshot_download('Qwen/Qwen3Guard-Gen-0.6B', local_dir='models/qwen3guard-gen-0.6b'))"
+python scripts/download_models.py --list        # 看有哪些权重、多大、给谁用（已下载的标 [ok]）
+python scripts/download_models.py --only l3     # 只下 L3 指令裁判（3.0 GB，权重不随仓库分发）
 
 # 2) 起服务（默认 127.0.0.1:8092；GPU 用 FLOWMASK_L3_DEVICE=cuda）
 $env:FLOWMASK_L3_MODE = "instruct"
@@ -395,8 +395,9 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 | `requirements-ml.txt` | onnxruntime / torch / transformers / onnx / onnxscript / modelscope | 需要 L2 真模型、L3 真模型、NER 或重新训练/导出时 |
 | `requirements-dev.txt` | `-r requirements.txt` + pytest / httpx | 跑测试、二次开发时 |
 
-模型权重**不随仓库分发**（`server/models/`、`server/l2_models/` 都在 .gitignore 里），按第 3/4 章给的
-ModelScope 命令重新下载；不下载也能跑，L2/L3/NER 关闭时链路自动降级为 L1-only 并标 `degraded`。
+模型权重**不随仓库分发**（`server/models/`、`server/l2_models/` 都在 .gitignore 里），用
+`python scripts/download_models.py --list` 看清单、`--only l3 ner` 按需下载（见 11.5 节）；
+不下载也能跑，L2/L3/NER 关闭时链路自动降级为 L1-only 并标 `degraded`。
 
 ### 11.2 环境变量与 `.env`
 
@@ -430,9 +431,34 @@ Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
   用 `.cmd` 包装或 `powershell -ExecutionPolicy Bypass -File .\scripts\start_local.ps1`。
 - **无模型降级路径**：不装 `requirements-ml.txt`、没有权重时，主服务照常可用，
   只是 L2/L3/NER 不参与（结果里 `degraded=true`）。
-- **Tauri 桌面打包未做**（需 Rust 工具链）；给评委的 Windows 单文件 exe 见 11.5，双击即用。
+- **Tauri 桌面打包未做**（需 Rust 工具链）；给评委的 Windows 单文件 exe 见 11.6，双击即用。
 
-### 11.5 打包 Windows 单文件 exe（双击即用）
+### 11.5 按需下载模型权重（`scripts/download_models.py`）
+
+权重不进仓库、也不打进 exe，用脚本按需拉取（本机 huggingface.co 不可直连，脚本默认走 ModelScope，
+NER 权重走 hf-mirror）：
+
+```powershell
+cd server
+python scripts/download_models.py --list          # 清单：名字/大小/落地目录/用途，已下载标 [ok]
+python scripts/download_models.py --only l3 ner   # 常用组合：L3 指令裁判 + L1.5 NER（约 3.3 GB）
+python scripts/download_models.py --all           # 全部 4 个目标（约 6.4 GB，含 L2 训练基座与护栏备选）
+python scripts/download_models.py --only l3 --dry-run   # 只看会做什么，不真下
+python scripts/download_models.py --all --dest D:\FlowMask\models   # 自定义落地目录
+```
+
+| 目标 | 大小 | 落地目录 | 用途 |
+| --- | ---: | --- | --- |
+| `l3` | 2955 MB | `models/qwen2.5-1.5b-instruct` | L3 解释与分级复核（`FLOWMASK_ENABLE_L3=1`） |
+| `ner` | 388 MB | `models/bert4ner` | 自由文本人名/地址（请求级 `enable_ner`） |
+| `l2-base` | 1632 MB | `models/bert-base-chinese` | 重训 L2 用；线上推理只需已导出的 ONNX |
+| `l3-guard` | 1449 MB | `models/qwen3guard-gen-0.6b` | 护栏口径的 L3 备选后端 |
+
+脚本行为：目标已完整（有 `config.json` + ≥1 MB 权重）就**跳过**，`--force` 可强制重下；
+依赖缺失时给出 `pip install` 提示并以退出码 2 结束，不会留下半个目录当“已下载”。
+L2 的 `l2_models/bert-sens-onnx` 是自训练产物、无法下载，需按 §3 重训导出或直接拷贝。
+
+### 11.6 打包 Windows 单文件 exe（双击即用）
 
 前端已构建的前提下，一条命令得到 `server/dist_exe/FlowMask.exe`（约 50 MB）：
 

@@ -109,6 +109,17 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 - **分级识别省算力**：只有 L1 命中的样本才升级 L2，只有 L2/L3 样本才送 L3——绝大多数流量停在微秒/毫秒级。
 - **本地闭环**：模型权重、推理、原始报文都不出本机，满足赛题"数据不出机"要求。
 
+## 模型权重（不进仓库，按需下载）
+
+代码与配置在仓库里，**模型权重不提交**（合计 5 GB+）。用脚本按需拉取，不需要就跳过——不下载也能跑，
+链路自动降级为 L1-only 并标 `degraded`：
+
+```powershell
+cd server
+python scripts/download_models.py --list        # 有哪些权重、多大、给谁用
+python scripts/download_models.py --only l3 ner # 最常用：L3 指令裁判 + 自由文本 NER
+```
+
 ## 快速开始
 
 环境：Go 1.25+（Windows / Linux 均可），本机演示不依赖管理员权限与外部网络。
