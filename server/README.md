@@ -23,6 +23,7 @@
 | 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 75 条；L1 only 准确率 89.3%，接 L2 后 98.7%、安全误报率 25.9%→0.0%，`--compare-l2` 一条命令复现 |
+| 性能基准 | ✅ | `server/bench.py` 本机实测：L1 **0.022 ms**/条（≈4.4 万条每秒）、端到端 `/detect` **2.18 ms**（≈459 请求/秒）、L2 int8 单条 7.4→4.1 ms、L3 1.5B **1.16 s**/条；报告 `docs/性能报告.md` 可一条命令复跑 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
 | L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据（默认 800 条，含 30% 困难负例）、弱标注、数据体检、微调 + ONNX 导出；本机真模型 macro-F1 **0.9844**、benign F1 **0.954** |
 
@@ -33,7 +34,8 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 174 个用例
+python -m pytest -q            # 179 个用例
+python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
 cd ../web && npm install && npm run build && cd ../server
@@ -315,7 +317,26 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
 4. **可复算可审计**：每条 finding 带 `rule_ids`、`confidence_vector`、`model_chain`、`reasons`；审计日志与 finding 一一对应，`prev_hash` 串成链，任何字段改动都会在 `/audit/verify` 暴露。
 5. **模块化便于扩展**：解析器、识别器、算子、导出格式都是小函数/协议 + 注册表，新增格式或模型不需改主流程。
 
-## 10. 下一步
+## 10. 性能基准（本机实测）
+
+一次真实运行的样本，报告在 [`docs/性能报告.md`](../docs/性能报告.md)（由下面的命令直接生成，不手工填数）：
+
+```powershell
+python -m bench --skip-l2                        # 只测 L1 + 进程内 /detect
+python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../docs/性能报告.md
+```
+
+| 链路 | 单条均值 | P95 | 吞吐 | 口径 |
+| --- | ---: | ---: | ---: | --- |
+| L1 规则识别（12 条规则 + 评分分级） | **0.022 ms** | 0.023 ms | ≈4.4 万条/秒 | 纯 Go 等价物在 Python 侧，无网络/模型 |
+| 端到端 `POST /api/v1/detect` | **2.18 ms** | 2.42 ms | ≈459 请求/秒 | 进程内 HTTP（`TestClient`，不含浏览器开销） |
+| L2 ONNX int8（batch=1 → 32） | 7.38 → **4.09 ms**/条 | 4.19 ms | ≈244 条/秒 | CPU 推理；批越大单条越便宜 |
+| L3 指令裁判（Qwen2.5-1.5B） | **1.16 s** | 1.26 s | 0.86 条/秒 | RTX 5060 Laptop 8GB / CUDA，回环 HTTP |
+
+测试机：AMD Ryzen 9 8940HX（32 线程）、31 GB 内存、Windows 11、Python 3.12.10，2026-10-20 实测。
+诚实边界：L3 只复核 L1 灰区样本（默认关闭），全量走 L3 会因 1.16 s/条成为吞吐瓶颈 —— 这正是「三级协同、按需升级」的设计理由。
+
+## 11. 下一步
 
 - **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
 - **LLM 敏感度调优**：L3 已接指令裁判（Qwen2.5-1.5B-Instruct），但零样本仍不足以稳定提升分级（见第 4 节矩阵）；下一步按本域标注微调 / 换更大指令模型；

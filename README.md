@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、174 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、179 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -194,6 +194,7 @@ deploy/       部署与打包脚本          plugins/ 声明式面板插件示�
 | [docs/项目介绍.md](docs/项目介绍.md) | 面向评审：背景、方案、创新点、演示流程、分工 |
 | [server/README.md](server/README.md) | **v2 主链路**：接口、配置、目录结构、设计要点 |
 | [docs/需求对照与待办清单.md](docs/需求对照与待办清单.md) | 需求 v2 的 58 条对照表、已完成/待办、关键路径与分工 |
+| [docs/性能报告.md](docs/性能报告.md) | 本机实测：L1 0.022 ms/条、端到端 2.18 ms、L2 int8 4.1 ms/条、L3 1.16 s/条（`python -m bench` 复现） |
 | [docs/设计文档.md](docs/设计文档.md) | 网络侧架构、算法、数据模型、接口契约、指标、里程碑 |
 | [docs/使用指南.md](docs/使用指南.md) | 采集端安装、远程连接、日常操作（基线能力） |
 | [docs/功能清单.md](docs/功能清单.md) | 采集端功能逐项说明（基线能力） |
