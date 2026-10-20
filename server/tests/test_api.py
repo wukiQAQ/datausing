@@ -1,4 +1,4 @@
-﻿"""接口层端到端测试：检测、任务、导出、统计、规则、审计、鉴权。"""
+"""接口层端到端测试：检测、任务、导出、统计、规则、审计、鉴权。"""
 
 from __future__ import annotations
 
@@ -60,10 +60,12 @@ def test_ui_page_and_root_redirect(client) -> None:
 
 def test_frontend_dist_is_optional(monkeypatch) -> None:
     """未构建正式前端时必须优雅降级：没有 /app 挂载，根路径回落到 /ui。"""
+    from pathlib import Path
+
     import app.main as main_module
     from fastapi.testclient import TestClient
 
-    monkeypatch.setattr(main_module, "FRONTEND_DIR", main_module.Path("/nonexistent-flowmask-dist"))
+    monkeypatch.setattr(main_module, "FRONTEND_DIR", Path("/nonexistent-flowmask-dist"))
     fallback = TestClient(main_module.create_app())
     assert fallback.get("/app/").status_code == 404
     redirect = fallback.get("/", follow_redirects=False)
