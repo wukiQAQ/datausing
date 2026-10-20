@@ -1,0 +1,7 @@
+# FlowMask 开发依赖（运行依赖 + 测试）
+#
+#   python -m pip install -r requirements-dev.txt
+#   python -m pytest -o addopts="" -q     # 注意：要在 server/ 目录下执行
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1

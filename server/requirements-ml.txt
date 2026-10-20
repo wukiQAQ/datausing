@@ -1,0 +1,23 @@
+# FlowMask 可选 ML 依赖：L2 语义模型推理、L3 大模型复核、NER 自由文本模式
+#
+#   python -m pip install -r requirements-ml.txt
+#
+# 说明：
+# - 这些依赖体积大（torch 约 2.5GB），只在需要「真模型」时才装；
+#   不装也能跑：L2/L3/NER 未启用时识别链自动降级为 L1-only，并在结果里标 degraded。
+# - 本机验证版本：Windows 11 + RTX 5060 Laptop 8GB，torch 用的是 cu128 轮子：
+#     pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+# - 模型权重不随仓库分发，按下文用 ModelScope 重新下载（huggingface.co 在本机不可达）：
+#     modelscope download --model google-bert/bert-base-chinese --local_dir models/bert-base-chinese
+#     modelscope download --model Qwen/Qwen2.5-1.5B-Instruct --local_dir models/qwen2.5-1.5b-instruct
+#     modelscope download --model shibing624/bert4ner-base-chinese --local_dir models/bert4ner
+#
+# L2 推理（ONNX int8，CPU 即可，10-33ms/条）
+onnxruntime==1.31.0
+# 训练 L2 / 导出 ONNX 用
+torch==2.11.0
+transformers==5.20.1
+onnx==1.23.2
+onnxscript==0.7.2
+# 权重下载
+modelscope==1.40.2
