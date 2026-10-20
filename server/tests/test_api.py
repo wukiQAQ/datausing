@@ -153,7 +153,10 @@ def test_task_not_found_and_bad_export_format(client) -> None:
 
 
 def test_custom_rule_is_effective_and_reversible(client) -> None:
-    assert len(client.get("/api/v1/rules").json()) == 12
+    # 内置规则条数会随迭代增减（如新增 sk- 密钥规则），这里用动态基线，
+    # 只要求"是一套完整规则"，避免每加一条规则就改测试。
+    baseline = len(client.get("/api/v1/rules").json())
+    assert baseline >= 12
     created = client.post(
         "/api/v1/rules",
         json={
@@ -181,7 +184,7 @@ def test_custom_rule_is_effective_and_reversible(client) -> None:
     assert client.delete("/api/v1/rules/mobile").status_code == 200
     assert client.post("/api/v1/detect", json={"text": f"电话 {PHONE}"}).json()["findings"]
     assert client.delete("/api/v1/rules/employee_no").status_code == 200
-    assert len(client.get("/api/v1/rules").json()) == 12
+    assert len(client.get("/api/v1/rules").json()) == baseline
 
 
 def test_rule_validation_errors(client) -> None:

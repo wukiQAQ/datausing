@@ -138,3 +138,19 @@ def test_bankcard_rejects_non_bin_prefix() -> None:
     result = analyze(f"订单号 {order_like}，已发货。")
     assert result.level.value == "SAFE"
     assert result.type_keys == []
+
+def test_bare_sk_api_key_is_l3() -> None:
+    """裸 sk- Key（HTTP 头/URL 里没有 key=value 上下文）也要判 L3。
+
+    这是扩样到 165 条评测集后暴露的盲区：secret_kv 依赖 `api_key=...` 这类键名，
+    `Authorization: Bearer sk-...` 会被漏掉。
+    """
+    key = "sk-ABCDEFGH12345678IJKLMNOP"
+    result = analyze(f"GET /v2/export HTTP/1.1\r\nAuthorization: Bearer {key}\r\n")
+    assert result.level.value == "L3"
+    assert "secret" in result.type_keys
+    assert result.direct is True
+
+    # 反例：普通短横线单词、短 token 不应误报
+    benign = analyze("字段 sk-feature-flag 的默认值是 on，部署脚本见 docs。")
+    assert "secret" not in benign.type_keys

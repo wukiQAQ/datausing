@@ -1,6 +1,6 @@
-﻿"""L1：规则快筛。
+"""L1：规则快筛。
 
-与 Go 版 ``internal/dlp/rules.go`` 一一对应，共 12 条规则。设计取舍：
+与 Go 版 ``internal/dlp/rules.go`` 一一对应，共 13 条规则（扩样时补了裸 sk- 密钥）。设计取舍：
 
 - **规则带权重与置信度**：权重是"类别严重度"，置信度是"这条规则本身的可靠程度"，
   两者相乘得到该命中的证据强度，供评分层使用（不是简单二值判定）。
@@ -132,6 +132,11 @@ RULES: tuple[Rule, ...] = (
     _rule("pem_private_key", EntityType.SECRET,
           r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)",
           1.00, 0.99),
+    # 裸露在 HTTP 头/URL/日志里的 API Key（Stripe 风格 sk-xxx，OpenAI 风格 sk-proj-xxx 也覆盖）：
+    # 没有 key=value 上下文，secret_kv 抓不到，评测集扩样后才暴露的盲区。
+    _rule("secret_sk", EntityType.SECRET,
+          r"(?<![A-Za-z0-9])(sk-[A-Za-z0-9][A-Za-z0-9_-]{15,})",
+          1.00, 0.92),
     # ---- 非结构化字段类（键值对形态）----
     _rule("name_kv", EntityType.NAME,
           r"(?:姓名|名字|客户名|(?<![A-Za-z])(?:name|full_name)(?![A-Za-z]))"
