@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、203 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、NER 探针） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、205 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -32,7 +32,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 能力 | 说明 | 状态 |
 | --- | --- | --- |
 | 多格式解析与分段定位 | 文本整段；JSON `$` 路径；CSV/TSV `row{n}.{列名}`；SQL 只取 DML 字面量（DDL 保留）；Word 段落/表格；PDF 按页 | ✅ |
-| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，bert-base-chinese 微调 + ONNX int8 真模型，单条 10–33ms）；L1.5 可选 NER（人名/地址，自由文本召回 22.2%→100%，默认关）✅；L3 独立推理服务 ✅（`server/l3_service/`，Qwen2.5-1.5B-Instruct 指令裁判 + Qwen3Guard-Gen-0.6B 护栏双后端，真权重已实测；默认封顶 L2、只贡献解释） | ✅ |
+| 三级协同识别 | L1 12 条规则 + 校验算法 ✅；L2 独立推理服务 ✅（`server/l2_service/`，bert-base-chinese 微调 + ONNX int8 真模型，单条 10–33ms）；L1.5 可选 NER（人名/地址，自由文本召回 22.2%→100%，请求级开关 + 前端标签）✅；L3 独立推理服务 ✅（`server/l3_service/`，Qwen2.5-1.5B-Instruct 指令裁判 + Qwen3Guard-Gen-0.6B 护栏双后端，真权重已实测；默认封顶 L2、只贡献解释） | ✅ |
 | 分级与赋权 | 加权最大 + 共现修正 + 极端类别直达 → L3/L2/L1/SAFE | ✅ |
 | 四级脱敏 + 命中区间 | 四级模板 + `spans` 区间，前端可高亮「原文 → 脱敏」对照 | ✅ |
 | 任务与落库 | 后台线程执行，`tasks`/`findings` 表，按级别/类别/任务查询 | ✅ |

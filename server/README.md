@@ -14,7 +14,7 @@
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
 | L2 语义识别（独立推理服务） | ✅ | `l2_service/` HTTP 服务：mock / ONNX int8 / auto 三后端；已用 bert-base-chinese 微调模型实测（单条 10–33 ms，CPU）；基座对比 roberta-wwm-ext 96.0% < bert 98.7%，保留 bert |
-| L1.5 实体识别（NER，可选） | ✅ | `app/identify/ner.py`：BERT4NER 补人名/地址（B-PER/B-LOC）；自由文本类型召回 22.2% → 100%（8 条探针，`python -m ner_probe`），代价约 +60–70 ms/条 CPU 前向；结构化数据上会多出类别，**默认关闭**（`FLOWMASK_ENABLE_NER=1` 开启） |
+| L1.5 实体识别（NER，可选） | ✅ | `app/identify/ner.py`：BERT4NER 补人名/地址（B-PER/B-LOC）；自由文本类型召回 22.2% → 100%（8 条探针，`python -m ner_probe`），代价约 +60–70 ms/条 CPU 前向；结构化数据上会多出类别 ⇒ **服务端不做默认开启**，由每次请求的 `enable_ner` 决定（前端检测页有「自由文本 NER」开关 + 状态标签） |
 | L3 本地大模型复核 | ✅ | 独立 `l3_service` 双后端：**指令裁判**（Qwen2.5-1.5B-Instruct，按本项目四级标准直出 `level/reason/categories`，默认推荐）或**护栏**（Qwen3Guard-Gen-0.6B，Safe/Controversial/Unsafe）；只复核 L1 灰区、只升不降、默认封顶 L2，异常即降级 |
 | 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
@@ -35,7 +35,7 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 179 个用例
+python -m pytest -q            # 205 个用例
 python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
@@ -113,11 +113,14 @@ python -m uvicorn app.main:app --port 8090
   默认权重 `shibing624/bert4ner-base-chinese`（406 MB，不入库），B-PER/B-LOC → 姓名/地址；
 - 挂载点：`pipeline._run_chain` 在 L1 之后补命中，跳过与已有命中重叠的区间（不重复计分），异常一律降级；
 - 开关：`FLOWMASK_ENABLE_NER=1` + `FLOWMASK_NER_MODEL_DIR=models/bert4ner`
-  （`FLOWMASK_NER_BACKEND=token|raner`、`FLOWMASK_NER_DEVICE=cpu|cuda`）；
+  （`FLOWMASK_NER_BACKEND=token|raner`、`FLOWMASK_NER_DEVICE=cpu|cuda`）：服务端开关只决定「是否加载/是否默认启用」，
+  **每次请求可用 `enable_ner` 显式覆盖**（true 打开、false 关闭、缺省跟服务端）；`/detect`、`/detect/file`、`/tasks/text`、`/traffic/*` 均支持；
+  `/health` 的 `ner` / `ner_backend` 告诉前端开关是否可用；
 - 探针（`python -m ner_probe --model-dir models/bert4ner`，8 条自由叙述 / 18 个标注类别）：
   类型召回 **22.2% → 100.0%**，8/8 样本提升；
 - 同一开关在 75 条**结构化**评测集上：类别 Micro-F1 0.928 → 0.904、p95 时延 64.8 → 133.6 ms
-  ⇒ 结构化/带字段名的数据上只会引入多余类别，**默认关闭**，只在「纯自由文本」场景打开。
+  ⇒ 结构化/带字段名的数据上只会引入多余类别，所以**不默认开启**；演示与答辩走「纯自由文本」时在检测页打开开关即可
+  （`http://127.0.0.1:8090/app/?ner=1#detect` 会带样例文本自动演示）。
 
 ## 4. L3 大模型复核（指令裁判 / 护栏双后端）
 
@@ -319,7 +322,7 @@ server/
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（75 条）与评测说明
-  tests/               203 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路、NER 探针
+  tests/               205 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路、NER 探针
   pyproject.toml
 web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
   src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView / TrafficView
@@ -358,6 +361,6 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 
 - **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
 - **LLM 敏感度调优**：L3 已接指令裁判（Qwen2.5-1.5B-Instruct），但零样本仍不足以稳定提升分级（见第 4 节矩阵）；下一步按本域标注微调 / 换更大指令模型；
-- **NER 自由文本模式**：机制已就绪（`FLOWMASK_ENABLE_NER` + `--enable-ner`），待前端开关与更高质量中文 NER 权重；
+- **NER 权重升级**：机制与前端开关已就绪（服务端开关 + 请求级 `enable_ner`），待更换更高质量中文 NER 权重/领域微调以提升结构化场景精度；
 - **网卡直采（可选）**：实时旁路已支持跟随 pcap 文件（dumpcap/Wireshark/自研采集器写）；若要服务端直接抓网卡，需引入 Npcap/libpcap（管理员权限）作为可选增强；
 - 交付侧：只保留开发与联调，答辩材料由他人负责。
