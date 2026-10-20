@@ -98,26 +98,51 @@ class MockGuardAdapter:
         from .identify.l3 import GuardVerdict
 
         result = self._backend.judge(text)
-        return GuardVerdict(risk=result.risk, reason=result.reason, model=result.model)
+        return GuardVerdict(
+            risk=result.risk,
+            reason=result.reason,
+            model=result.model,
+            categories=tuple(result.categories),
+            level_hint=result.level,
+        )
+
+
+class HttpJudgeAdapter:
+    """把真实 L3 HTTP 服务包成 ``GuardClassifier``：用于「mock vs 真模型」同口径对比。"""
+
+    name = "l3-http"
+
+    def __init__(self, endpoint: str, timeout_s: float = 60.0) -> None:
+        from .identify.l3 import HttpJudgeClassifier
+
+        self._inner = HttpJudgeClassifier(endpoint, "l3-http", timeout_s)
+
+    def available(self) -> bool:
+        return self._inner.available()
+
+    def judge(self, text: str):
+        return self._inner.judge(text)
 
 
 def build_pipeline(
     use_mock_l2: bool = False,
     use_mock_l3: bool = False,
     l2_endpoint: str = "",
+    l3_endpoint: str = "",
 ) -> DetectionPipeline:
     """按评测模式构造流水线：默认按配置（L1 only），mock/真实 HTTP 后端按需注入。"""
-    if l2_endpoint:
-        return DetectionPipeline(
-            semantic=HttpSemanticAdapter(l2_endpoint),
-            guard=MockGuardAdapter() if use_mock_l3 else None,
-        )
-    if not use_mock_l2 and not use_mock_l3:
-        return DetectionPipeline.from_settings(get_settings())
-    return DetectionPipeline(
-        semantic=MockSemanticAdapter() if use_mock_l2 else None,
-        guard=MockGuardAdapter() if use_mock_l3 else None,
+    semantic = HttpSemanticAdapter(l2_endpoint) if l2_endpoint else (
+        MockSemanticAdapter() if use_mock_l2 else None
     )
+    if l3_endpoint:
+        guard = HttpJudgeAdapter(l3_endpoint)
+    elif use_mock_l3:
+        guard = MockGuardAdapter()
+    else:
+        guard = None
+    if semantic is None and guard is None:
+        return DetectionPipeline.from_settings(get_settings())
+    return DetectionPipeline(semantic=semantic, guard=guard)
 
 _PARSERS: dict[str, Callable[[str], Any]] = {
     "text": parse_text,
@@ -438,12 +463,13 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
     compare = meta.get("compare")
     if compare:
         l2_label = "L1 + L2（真模型）" if meta.get("l2_endpoint") else "L1 + L2（mock）"
-        labels = {"l1": "L1 only", "l2": l2_label, "l3": l2_label + " + L3（mock）"}
+        l3_label = l2_label + (" + L3（真模型）" if meta.get("l3_endpoint") else " + L3（mock）")
+        labels = {"l1": "L1 only", "l2": l2_label, "l3": l3_label}
         if meta.get("compare_labels"):
             labels.update(meta["compare_labels"])
         modes = [key for key in ("l1", "l2", "l3") if key in compare]
         if "l2" not in modes:  # 只对比 L3 时，标签不要写 L2
-            labels["l3"] = "L1 + L3（mock）"
+            labels["l3"] = "L1 + " + ("L3（真模型）" if meta.get("l3_endpoint") else "L3（mock）")
         heads = [labels[key] for key in modes]
         lines.append("## 5.1 多模型协同对比（" + " vs ".join(heads) + "）")
         lines.append("")
@@ -482,6 +508,16 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
                 "「语义复核 / 示例数据判定 / 大模型解释」这条链路的增益；接真模型后用 "
                 "`--l2-endpoint`、`--enable-l3` 复跑同一套指标即可对比。"
             )
+        if meta.get("l3_endpoint"):
+            lines.append(
+                f"- L3 列为**真实模型**：`{meta['l3_endpoint']}`（本地 HTTP 推理服务，仅对 L1/L2 "
+                "模糊区间样本复核；只升不降，所有升级默认封顶 L2，避免把低危抬成中危）。"
+            )
+            lines.append(
+                "- **L3 策略矩阵**（同数据集，`python -m l3_measure` 可复现）：只认 Unsafe 封顶 L2 = 98.7%、"
+                "采信分级建议 = 98.7%、类别感知 = 85.3%、放开 L3 上限 = 84.0% —— 因此默认取"
+                "「只升不降 + 封顶 L2」的保守口径，L3 当前只贡献解释与证据，不改变分级。"
+            )
         lines.append("")
 
     lines.append("## 6. 口径与局限（如实说明）")
@@ -511,10 +547,11 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
 def _mode_label(args: argparse.Namespace) -> str:
     """把命令行开关翻译成报告里的模式名。"""
     l2_name = "L2(真模型)" if args.l2_endpoint else "L2(mock)"
+    l3_name = "L3(真模型)" if args.l3_endpoint else "L3(mock)"
     if args.compare_l3 and args.compare_l2:
-        return f"L1 only vs L1 + {l2_name} vs L1 + {l2_name} + L3(mock)"
+        return f"L1 only vs L1 + {l2_name} vs L1 + {l2_name} + {l3_name}"
     if args.compare_l3:
-        return "L1 only vs L1 + L3(mock)"
+        return f"L1 only vs L1 + {l3_name}"
     if args.compare_l2:
         return f"L1 only vs L1 + {l2_name}"
     if args.enable_l3_mock:
@@ -560,9 +597,14 @@ def main(argv: list[str] | None = None) -> int:
         help="用内置 mock L3 后端（启发式护栏，无需权重）跑复核链路",
     )
     parser.add_argument(
+        "--l3-endpoint",
+        default="",
+        help="配合 --compare-l3：用真实 L3 服务（如 http://127.0.0.1:8092/v1/judge）替代 mock 后端",
+    )
+    parser.add_argument(
         "--compare-l3",
         action="store_true",
-        help="在对比表里加入 L3(mock) 一列（可与 --compare-l2 叠加）",
+        help="在对比表里加入 L3 一列（默认 mock；给了 --l3-endpoint 则用真模型，可与 --compare-l2 叠加）",
     )
     args = parser.parse_args(argv)
 
@@ -585,8 +627,9 @@ def main(argv: list[str] | None = None) -> int:
                 options=DetectOptions(enable_l2=args.compare_l2, enable_l3=True),
                 pipeline=build_pipeline(
                     use_mock_l2=args.compare_l2 and not args.l2_endpoint,
-                    use_mock_l3=True,
+                    use_mock_l3=not args.l3_endpoint,
                     l2_endpoint=args.l2_endpoint,
+                    l3_endpoint=args.l3_endpoint,
                 ),
             )
             compare["l3"] = l3_summary
@@ -607,12 +650,15 @@ def main(argv: list[str] | None = None) -> int:
     command = "cd server && python -m app.evaluate --compare-l2 --compare-l3"
     if args.l2_endpoint:
         command += f" --l2-endpoint {args.l2_endpoint}"
+    if args.l3_endpoint:
+        command += f" --l3-endpoint {args.l3_endpoint}"
     meta = {
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
         "dataset": str(args.dataset),
         "mode": _mode_label(args),
         "command": command,
         "l2_endpoint": args.l2_endpoint,
+        "l3_endpoint": args.l3_endpoint,
         "compare": compare,
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)

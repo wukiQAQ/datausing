@@ -15,8 +15,12 @@ if str(SERVER_ROOT) not in sys.path:
 from l3_service.app import create_app  # noqa: E402
 from l3_service.backends import (  # noqa: E402
     EchoGuardBackend,
+    InstructJudgeBackend,
+    JudgeResult,
     MockGuardBackend,
+    _parse_instruct_output,
     build_backend,
+    extract_categories,
     parse_guard_text,
 )
 
@@ -145,3 +149,87 @@ def test_resolve_dtype(monkeypatch) -> None:
     assert _resolve_dtype(fake_torch, "cuda") == "fp16"
     monkeypatch.setenv("FLOWMASK_L3_DTYPE", "unknown")
     assert _resolve_dtype(fake_torch, "cpu") == "fp32"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Safety: Controversial\nCategories: PII, Confidential", ("PII", "CONFIDENTIAL")),
+        ('{"categories": ["pii", "id_card"]}', ("PII", "ID_CARD")),
+        ('{"category": "PII"}', ("PII",)),
+        ("Safety: Safe\nCategories: None", ()),
+        ("no categories here", ()),
+    ],
+)
+def test_extract_categories(raw: str, expected: tuple[str, ...]) -> None:
+    """类别抽取：原生 Categories 行与 JSON 两种都要覆盖，抽不到就返回空。"""
+    assert extract_categories(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "want_level"),
+    [
+        ('{"level": "L3", "categories": ["id_card"], "reason": "含身份证"}', "L3"),
+        ('{"level": "l2", "reason": "含手机号"}', "L2"),
+        ('{"risk": "Unsafe", "reason": "强敏感"}', "L3"),
+        ('{"risk": "Safe", "reason": "示例数据"}', "SAFE"),
+        ("```json\n{\"level\": \"L1\", \"reason\": \"仅姓名\"}\n```", "L1"),
+    ],
+)
+def test_parse_instruct_output(raw: str, want_level: str) -> None:
+    """指令模型输出解析：分级建议优先，也兼容 risk 写法与代码块包裹。"""
+    level, reason = _parse_instruct_output(raw)
+    assert level == want_level
+    assert reason
+
+
+def test_parse_instruct_output_garbage_returns_none() -> None:
+    level, _ = _parse_instruct_output("我不知道该怎么判")
+    assert level is None
+
+
+def test_instruct_backend_parses_and_maps_risk() -> None:
+    """指令后端：分级建议 → 护栏风险映射 + 类别保留（不加载真权重，走 _build_result）。"""
+
+    backend = InstructJudgeBackend(model_dir="unused", device="cpu")
+    result = backend._build_result(  # noqa: SLF001 - 直接验证解析逻辑
+        '{"level": "L3", "categories": ["id_card", "PII"], "reason": "含身份证"}', 0.0
+    )
+    assert result.level == "L3"
+    assert result.risk == "Unsafe"
+    assert result.reason == "含身份证"
+    assert result.categories == ("ID_CARD", "PII")
+
+
+def test_build_backend_instruct_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("FLOWMASK_L3_MODE", "instruct")
+    monkeypatch.setenv("FLOWMASK_L3_MODEL_DIR", str(tmp_path / "qwen-instruct"))
+    backend = build_backend()
+    assert isinstance(backend, InstructJudgeBackend)
+    assert backend.describe()["mode"] == "instruct"
+
+
+def test_judge_contract_includes_categories_and_level() -> None:
+    """HTTP 契约透传类别与分级建议：主服务的类别感知复核依赖这两个字段。"""
+
+    class CategoryBackend:
+        name = "category-stub"
+
+        def describe(self) -> dict[str, object]:
+            return {"mode": "stub"}
+
+        def judge(self, text: str) -> JudgeResult:
+            return JudgeResult(
+                risk="Controversial",
+                reason="含身份证号",
+                model="stub",
+                latency_ms=1.0,
+                categories=("PII", "ID_CARD"),
+                level="L2",
+            )
+
+    client = TestClient(create_app(CategoryBackend()))
+    body = client.post("/v1/judge", json={"text": "身份证 " + ID_CARD}).json()
+    assert body["categories"] == ["PII", "ID_CARD"]
+    assert body["level"] == "L2"
+    assert body["degraded"] is False

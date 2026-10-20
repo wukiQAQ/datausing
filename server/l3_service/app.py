@@ -1,4 +1,4 @@
-﻿"""L3 护栏推理服务：``POST /v1/judge`` 把一段文本判成 Safe / Controversial / Unsafe。
+"""L3 护栏推理服务：``POST /v1/judge`` 把一段文本判成 Safe / Controversial / Unsafe。
 
 与 ``l2_service`` 同构：独立进程、回环地址、失败不 500（返回 ``degraded=true``），
 主服务（``app``）只把它当可降级的依赖。
@@ -26,6 +26,10 @@ class JudgeOut(BaseModel):
     model: str = ""
     latency_ms: float = 0.0
     degraded: bool = False
+    # 敏感类别（护栏模型从 Categories 抽、指令模型直接给）：主服务据此做"类别感知"复核
+    categories: list[str] = Field(default_factory=list)
+    # 分级建议（只有指令模型给）：L3/L2/L1/SAFE，主服务只在"升级方向"采用
+    level: str = ""
 
 
 def create_app(backend: GuardBackend | None = None) -> FastAPI:
@@ -60,6 +64,8 @@ def create_app(backend: GuardBackend | None = None) -> FastAPI:
             model=result.model,
             latency_ms=result.latency_ms,
             degraded=False,
+            categories=list(result.categories),
+            level=result.level,
         )
 
     @app.get("/")

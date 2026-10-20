@@ -92,13 +92,27 @@ def test_l2_exception_marks_degraded() -> None:
     assert report.findings[0].model_chain == "l1"
 
 
-def test_l3_upgrades_ambiguous_and_records_reason() -> None:
-    document = parse_text(f"联系电话 {PHONE}")
-    report = DetectionPipeline(guard=FakeGuard()).analyze_document(document, DetectOptions(enable_l3=True))
-    finding = report.findings[0]
-    assert finding.level == Level.HIGH
+def test_l3_unsafe_upgrade_capped_by_max_target(monkeypatch) -> None:
+    """Unsafe 升级同样受 FLOWMASK_L3_MAX_TARGET 约束：默认只抬到中危。
+
+    背景：1.5B 指令模型零样本对边界样本也会给 Unsafe（实测把「诊断: 2型糖尿病」判成
+    Unsafe/L3），不设上限会把金标 L2 抬成 L3、准确率从 98.7% 掉到 97.3%。
+    """
+    monkeypatch.delenv("FLOWMASK_L3_MAX_TARGET", raising=False)
+    document = parse_text("联系人：zhang.san@example.com")
+    finding = DetectionPipeline(guard=FakeGuard()).analyze_document(
+        document, DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.MID  # 默认上限 L2
     assert finding.model_chain == "l1>l3"
     assert finding.reason and "身份证" in finding.reason
+
+    # 显式放开上限到 L3 才允许抬到高危
+    monkeypatch.setenv("FLOWMASK_L3_MAX_TARGET", "L3")
+    finding = DetectionPipeline(guard=FakeGuard()).analyze_document(
+        parse_text("联系人：zhang.san@example.com"), DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.HIGH
 
 
 def test_l3_unavailable_degrades_without_blocking() -> None:
@@ -234,3 +248,88 @@ def test_benign_threshold_env_override(monkeypatch) -> None:
         text, DetectOptions(enable_l2=True)
     )
     assert finding is not None and finding.level.value == "L2"  # 阈值抬高后不再压制
+
+
+class PiiCategoryGuard:
+    """点出 PII 类别、但不判 Unsafe 的复核模型（模拟护栏模型的真实行为）。"""
+
+    name = "pii-category-guard"
+
+    def available(self) -> bool:
+        return True
+
+    def judge(self, text: str) -> GuardVerdict | None:
+        return GuardVerdict(
+            risk="Controversial",
+            reason="含个人信息",
+            model="fake-qwen",
+            categories=("PII",),
+        )
+
+
+class LevelHintGuard:
+    """指令模型：直接给分级建议（level_hint），risk 只做兜底。"""
+
+    def __init__(self, hint: str) -> None:
+        self.hint = hint
+        self.name = "level-hint-guard"
+
+    def available(self) -> bool:
+        return True
+
+    def judge(self, text: str) -> GuardVerdict | None:
+        return GuardVerdict(risk="Safe", reason="按分级细则判定", model="instruct", level_hint=self.hint)
+
+
+def test_l3_category_aware_raises_low_to_mid(monkeypatch) -> None:
+    """类别感知默认关闭（实测会把 name/email/address 类低危样本全抬成中危、准确率 98.7%→85.3%）。"""
+    monkeypatch.delenv("FLOWMASK_L3_CATEGORY_RAISE", raising=False)
+    finding = DetectionPipeline(guard=PiiCategoryGuard()).analyze_document(
+        parse_text("联系人：zhang.san@example.com"), DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.LOW  # 默认只解释、不改级别
+
+    # 显式开启后才按类别抬到中危
+    monkeypatch.setenv("FLOWMASK_L3_CATEGORY_RAISE", "1")
+    finding = DetectionPipeline(guard=PiiCategoryGuard()).analyze_document(
+        parse_text("联系人：zhang.san@example.com"), DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.MID
+    evidence = [item for item in finding.confidence_vector if item.get("type") == "l3_guard"]
+    assert evidence and evidence[0]["raised"] is True
+    assert evidence[0]["categories"] == ["PII"]
+
+
+def test_l3_level_hint_is_trusted_for_upgrade(monkeypatch) -> None:
+    """指令模型给分级建议时按建议升级（只升不降），且可被 env 关闭。"""
+    monkeypatch.delenv("FLOWMASK_L3_TRUST_LEVEL_HINT", raising=False)
+    monkeypatch.delenv("FLOWMASK_L3_MAX_TARGET", raising=False)
+    document = parse_text("联系人：zhang.san@example.com")
+    finding = DetectionPipeline(guard=LevelHintGuard("L2")).analyze_document(
+        document, DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.MID
+
+    monkeypatch.setenv("FLOWMASK_L3_TRUST_LEVEL_HINT", "0")
+    finding = DetectionPipeline(guard=LevelHintGuard("L2")).analyze_document(
+        parse_text("联系人：zhang.san@example.com"), DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.LOW
+
+
+def test_l3_level_hint_capped_by_max_target(monkeypatch) -> None:
+    """非 Unsafe 情形默认最多抬到 L2：防止大模型把低危一路抬成高危。"""
+    monkeypatch.delenv("FLOWMASK_L3_TRUST_LEVEL_HINT", raising=False)
+    monkeypatch.delenv("FLOWMASK_L3_MAX_TARGET", raising=False)
+    document = parse_text("联系人：zhang.san@example.com")
+    finding = DetectionPipeline(guard=LevelHintGuard("L3")).analyze_document(
+        document, DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.MID
+
+    monkeypatch.setenv("FLOWMASK_L3_MAX_TARGET", "L3")
+    finding = DetectionPipeline(guard=LevelHintGuard("L3")).analyze_document(
+        parse_text("联系人：zhang.san@example.com"), DetectOptions(enable_l3=True)
+    ).findings[0]
+    assert finding.level == Level.HIGH
+

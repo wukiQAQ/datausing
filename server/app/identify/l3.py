@@ -29,17 +29,43 @@ GUARD_PROMPT = """你是数据安全审核员。判断下面这段文本是否�
 
 @dataclass(slots=True)
 class GuardVerdict:
-    """L3 的判定结果。"""
+    """L3 的判定结果。
+
+    两种来源共用一个结构：
+    - 护栏模型（Qwen3Guard）：``risk`` 为 Safe/Controversial/Unsafe，``categories`` 从
+      原生输出的 Categories 抽（如 ``PII``），``level_hint`` 为空；
+    - 指令裁判（Qwen2.5-Instruct）：``level_hint`` 直接给 L3/L2/L1/SAFE，``categories``
+      给敏感类别，``risk`` 由分级映射而来。
+    """
 
     risk: str
     reason: str
     model: str
+    categories: tuple[str, ...] = ()
+    level_hint: str = ""
 
     @property
     def level(self) -> Level:
         """护栏三级风险 → 项目四级。Controversial 记为中危，避免 Safe 被误放。"""
         mapping = {"unsafe": Level.HIGH, "controversial": Level.MID, "safe": Level.SAFE}
         return mapping.get(self.risk.strip().lower(), Level.SAFE)
+
+    @property
+    def suggested_level(self) -> Level | None:
+        """指令模型给出的分级建议（没有就返回 None）。"""
+        hint = self.level_hint.strip().upper()
+        if not hint:
+            return None
+        try:
+            return Level.parse(hint)
+        except ValueError:
+            return None
+
+    def has_pii_category(self, categories: frozenset[str]) -> bool:
+        """模型是否点出了敏感类别（大小写不敏感，PII 这种泛化标签也算）。"""
+        if not self.categories:
+            return False
+        return any(cat.strip().upper() in categories for cat in self.categories)
 
 
 class GuardClassifier(Protocol):
@@ -125,10 +151,18 @@ class HttpJudgeClassifier:
         risk = str(body.get("risk", "")).strip()
         if risk.lower() not in {"safe", "controversial", "unsafe"}:
             return None
+        raw_categories = body.get("categories") or []
+        if isinstance(raw_categories, str):
+            raw_categories = [raw_categories]
+        categories = tuple(
+            str(item).strip() for item in raw_categories if str(item).strip()
+        ) if isinstance(raw_categories, list) else ()
         return GuardVerdict(
             risk=risk,
             reason=str(body.get("reason", ""))[:200],
             model=str(body.get("model") or self.model),
+            categories=categories,
+            level_hint=str(body.get("level", "") or "").strip(),
         )
 
 

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, replace
 from ..core.config import Settings
 from ..parsers.base import Document, Segment
 from .l2 import SemanticClassifier, SemanticHit, build_semantic_classifier
-from .l3 import GuardClassifier, build_guard_classifier
+from .l3 import GuardClassifier, GuardVerdict, build_guard_classifier
 from .masking import mask
 from .normalize import map_hit_span, normalize_with_map
 from .scoring import analyze as analyze_l1
@@ -60,6 +60,56 @@ def _direct_benign_threshold() -> float:
     return _env_float("FLOWMASK_L2_BENIGN_DIRECT_MIN", L2_BENIGN_DIRECT_MIN_CONFIDENCE)
 AMBIGUOUS_MIN = 0.25
 AMBIGUOUS_MAX = 0.85
+
+#: 模型点出这些类别（或泛化标签 PII）时，认为"确实涉及敏感个人信息"
+PII_CATEGORIES = frozenset(
+    {
+        "PII",
+        "PHONE",
+        "ID_CARD",
+        "BANK_CARD",
+        "EMAIL",
+        "IP",
+        "SECRET",
+        "PASSWORD",
+        "NAME",
+        "ADDRESS",
+        "MEDICAL",
+        "PERSONAL_INFORMATION",
+        "PERSONAL_DATA",
+    }
+)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """读取布尔开关（评测调参用），非法值退回默认。"""
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _l3_category_raise() -> bool:
+    """L3 类别感知：模型点出 PII 类别时允许把低危抬到中危（默认关，见 l3_measure 实测）。"""
+    return _env_flag("FLOWMASK_L3_CATEGORY_RAISE", False)
+
+
+def _l3_trust_level_hint() -> bool:
+    """是否采信指令模型直接给出的分级建议（L3/L2/L1/SAFE）。"""
+    return _env_flag("FLOWMASK_L3_TRUST_LEVEL_HINT", True)
+
+
+def _l3_max_target() -> Level:
+    """L3 非 Unsafe 情形下允许抬到的最高级别（类别感知/分级建议共用此上限）。"""
+    raw = os.environ.get("FLOWMASK_L3_MAX_TARGET", "L2").strip().upper()
+    try:
+        return Level.parse(raw) if raw else Level.MID
+    except ValueError:
+        return Level.MID
 
 
 def sha256_text(text: str) -> str:
@@ -118,6 +168,8 @@ def _rebase_result(
     rebased = score(hits)
     rebased.extra_evidence = list(result.extra_evidence)
     rebased.degraded = result.degraded
+    # L3 复核抬升的级别下限要跟着走：重算分数不能把大模型/指令裁判的判断抹掉
+    rebased.level_floor = result.level_floor
     if result.score_scale != 1.0:
         rebased.score_scale = result.score_scale
         rebased.score = round(min(rebased.score * result.score_scale, 1.0), 3)
@@ -125,6 +177,8 @@ def _rebase_result(
         # 否则重算会把直达高危又加回来，压制白做。
         rebased.direct = result.direct
         rebased.level = level_for(rebased.score, rebased.direct)
+    if rebased.level_floor.severity > rebased.level.severity:
+        rebased.level = rebased.level_floor
     return rebased
 
 
@@ -336,7 +390,7 @@ class DetectionPipeline:
         if options.enable_l3 and self.guard is not None and self.guard.available() and ambiguous:
             try:
                 verdict = self.guard.judge(text)
-            except Exception:
+            except Exception:  # 大模型服务异常一律降级，不打断主链路
                 verdict = None
                 result.degraded = True
             if verdict is None:
@@ -344,11 +398,12 @@ class DetectionPipeline:
             else:
                 chain.append("l3")
                 reason = verdict.reason or None
-                # L3 的定位是「复核 + 解释」，不是重新分级：
-                # 只有判定 Unsafe 时才升级到高危；Controversial/Safe 不改级别，
-                # 避免大模型把低危样本抬成中危（mock 与真模型都验证过这条更稳）。
-                if verdict.level == Level.HIGH and result.level.severity < Level.HIGH.severity:
-                    result.level = verdict.level
+                target = _l3_target_level(verdict, result)
+                raised = target is not None
+                if raised:
+                    result.level = target
+                    # 记录级别下限：归一化/结构化前缀会触发重算分数，不记下限会被算回去
+                    result.level_floor = target
                 result.extra_evidence.append(
                     {
                         "type": "l3_guard",
@@ -356,10 +411,48 @@ class DetectionPipeline:
                         "weight": 0.0,
                         "rule": verdict.model,
                         "risk": verdict.risk,
+                        # 模型给出的类别与分级建议都留证据：解释与消融实验都要用
+                        "categories": list(verdict.categories),
+                        "level_hint": verdict.level_hint,
+                        "raised": raised,
                     }
                 )
 
         return result, ">".join(chain), reason
+
+
+def _l3_target_level(verdict: GuardVerdict, result: Result) -> Level | None:
+    """L3 复核后要抬到的级别；``None`` 表示「只解释、不改级别」。
+
+    优先级：护栏 Unsafe > 指令模型的分级建议 > 类别感知（点出 PII 类别）。
+
+    为什么要设上限与"只升不降"：L3 的定位是复核 + 解释，无边界地信任大模型会把低危
+    样本抬成中危——实测放开后分级准确率从 98.7% 掉到 94.7%。因此**所有**升级（含
+    Unsafe）都受 ``FLOWMASK_L3_MAX_TARGET``（默认 L2）约束，且只升不降。
+
+    为什么 Unsafe 也要受上限：1.5B 指令模型零样本对边界样本会给出 Unsafe（实测把
+    「诊断: 2型糖尿病」判成 Unsafe/L3），不设上限会把金标 L2 抬成 L3、准确率反而掉
+    到 97.3%。需要"高危直接升"时显式设 ``FLOWMASK_L3_MAX_TARGET=L3``。
+    """
+    target: Level | None = None
+    if verdict.risk.strip().lower() == "unsafe":
+        target = Level.HIGH
+    else:
+        if _l3_trust_level_hint():
+            hint = verdict.suggested_level
+            if hint is not None and hint.severity > result.level.severity:
+                target = hint
+        if target is None and _l3_category_raise() and verdict.has_pii_category(PII_CATEGORIES):
+            # 模型点出了身份证/PII 等类别：把低危抬到中危，而不是一路抬到高危
+            if result.level.severity < Level.MID.severity:
+                target = Level.MID
+    if target is not None:
+        max_target = _l3_max_target()
+        if target.severity > max_target.severity:
+            target = max_target
+    if target is not None and target.severity <= result.level.severity:
+        target = None
+    return target
 
 
 def _apply_l2_benign(result: Result, confidence: float) -> Result:
