@@ -430,7 +430,30 @@ Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
   用 `.cmd` 包装或 `powershell -ExecutionPolicy Bypass -File .\scripts\start_local.ps1`。
 - **无模型降级路径**：不装 `requirements-ml.txt`、没有权重时，主服务照常可用，
   只是 L2/L3/NER 不参与（结果里 `degraded=true`）。
-- **Tauri 桌面打包未做**：当前交付形态是「本机一体机 + 浏览器前端」，够演示与验收。
+- **Tauri 桌面打包未做**（需 Rust 工具链）；给评委的 Windows 单文件 exe 见 11.5，双击即用。
+
+### 11.5 打包 Windows 单文件 exe（双击即用）
+
+前端已构建的前提下，一条命令得到 `server/dist_exe/FlowMask.exe`（约 50 MB）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+# 已构建过前端可加 -SkipFrontend 跳过 npm run build
+```
+
+双击 exe 之后：
+
+- 自动挑端口（8765 起，被占用顺延），起服务并用 **Edge/Chrome 的 app 模式**开一个无地址栏窗口（没有就回落默认浏览器）；
+- 数据写 `%LOCALAPPDATA%\FlowMask\data`（不污染安装/解压目录），日志 `%LOCALAPPDATA%\FlowMask\logs\desktop.log`；
+  若该目录被安全软件/组策略拒绝访问（WinError 5），自动回落为 **便携模式**：数据与日志放 exe 同级 `data/`、`logs/`；
+- 常用参数：`--port`、`--data-dir`、`--enable-l2`、`--enable-l3`、`--enable-ner`、`--no-browser`（详见 `FlowMask.exe --help`）；
+  双击没反应时先跑 `FlowMask.exe --self-check`，会在 exe 同级生成 `FlowMask-selfcheck.txt`（路径、可写性一目了然）。
+
+模型权重**不打进 exe**（这是体积能压到 50 MB 的原因）：把 `l2_models/`、`models/` 放到 **exe 同级目录**即可被自动识别；
+没有权重也能启动，链路自动降级为 L1-only（`degraded=true`）。
+
+已知边界：exe 只跑**主服务**；L2/L3/NER 的 torch/onnxruntime 推理仍以 Python 进程单独启动（`python -m l2_service`），
+以免把 CUDA/驱动版本耦合进 exe。打包用 PyInstaller（`flowmask.spec`），**不需要** Rust/Node 运行时。
 
 ## 12. 下一步
 
