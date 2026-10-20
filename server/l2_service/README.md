@@ -134,7 +134,7 @@ python -m app.evaluate --compare-l2 --compare-l3 --l2-endpoint http://127.0.0.1:
 > 真模型由 `l2_training` 用 bert-base-chinese 微调（macro-F1 0.9844）后经 `export_onnx` 转 int8；
 > 训练数据与评测集隔离。报告见 [`docs/评测报告.md`](../../docs/评测报告.md)。
 
-### 5.1 导出/推理踩过的三个坑（已修）
+### 5.1 导出/推理踩过的四个坑（已修）
 
 1. **`id2label` 不是「序号 → 名字」**：微调模型的 `config.json` 里 `id2label` 是「名字 → 序号」。
    现在 `export_onnx` 优先读模型目录的 `labels.json`，其次数字型 `id2label`，都不行才报错提示。
@@ -143,3 +143,6 @@ python -m app.evaluate --compare-l2 --compare-l3 --l2-endpoint http://127.0.0.1:
 3. **ONNX 输入没带 attention mask**：`tokenizer.json` 自带 padding 到 128，若 mask 全 1，
    有效 token 被当成 padding，预测几乎全错（手机号 0.84 → 空）。现在 `no_padding()` + 用
    `attention_mask` 构造 mask。
+4. **RoBERTa 上 int8 必须按通道量化**：同一份权重 fp32 ONNX 正常（phone 0.917 / id_card 0.903），
+   默认 per-tensor int8 直接输出空类别且 `benign` 固定 0.454；改成
+   `quantize_dynamic(..., per_channel=True)` 后恢复（phone 0.915）。`export_onnx.py` 已默认按通道量化。
