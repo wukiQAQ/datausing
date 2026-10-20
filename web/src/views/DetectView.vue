@@ -5,15 +5,26 @@ import { api, LEVEL_COLORS, LEVEL_LABELS } from "../api";
 import { maskedDocumentText, renderHighlight } from "../highlight";
 
 const SAMPLE = `客户张三，手机 13800138000，身份证 11010519491231002X，收货地址：福建省福州市鼓楼区五四路 100 号。`;
+// 自由文本样例：没有字段名/关键词，L1 规则抓不到人名和地名，只有 NER 能补
+const NER_SAMPLE = "张三昨天从福州赶过来，和李四在厦门大学碰了面，商量下个季度的采购方案。";
 
 const text = ref(SAMPLE);
 const maskLevel = ref("");
 const minLevel = ref("SAFE");
 const enableL2 = ref(false);
 const enableL3 = ref(false);
+const enableNer = ref(false);
+const nerAvailable = ref(false);
+const nerBackend = ref("");
 const loading = ref(false);
 const result = ref(null);
 const file = ref(null);
+
+const nerTitle = computed(() =>
+  nerAvailable.value
+    ? `NER 后端：${nerBackend.value}（可选识别，仅补类别不抬级别）`
+    : "服务端未启用 NER：启动时设置 FLOWMASK_ENABLE_NER=1 并准备 NER 权重",
+);
 
 const findings = computed(() => (result.value ? result.value.findings : []));
 const byLevel = computed(() => (result.value ? result.value.by_level : {}));
@@ -46,6 +57,7 @@ async function runDetect() {
       text: text.value,
       enable_l2: enableL2.value,
       enable_l3: enableL3.value,
+      enable_ner: enableNer.value,
       mask_level: maskLevel.value || null,
       min_level: minLevel.value,
     });
@@ -79,8 +91,24 @@ function levelChip(level) {
   return { background: LEVEL_COLORS[level] || "#64748b" };
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // NER 需要本地模型：服务端没启用时把开关禁用，避免用户开了却没效果
+  try {
+    const health = await api.health();
+    nerAvailable.value = Boolean(health.ner);
+    nerBackend.value = health.ner_backend || "";
+    // 服务端默认开 NER 时开关跟着打开；用户仍可手动关掉本次请求的可选识别
+    enableNer.value = nerAvailable.value;
+  } catch {
+    nerAvailable.value = false;
+  }
   // 打开即跑一遍示例：答辩/演示时页面一落地就有内容
+  // ?ner=1：直接演示自由文本模式（NER 补出人名/地名）
+  const wantNer = new URLSearchParams(window.location.search).get("ner") === "1";
+  if (wantNer && nerAvailable.value) {
+    enableNer.value = true;
+    text.value = NER_SAMPLE;
+  }
   runDetect();
 });
 </script>
@@ -107,6 +135,12 @@ onMounted(() => {
       </el-select>
       <el-checkbox v-model="enableL2">L2 语义</el-checkbox>
       <el-checkbox v-model="enableL3">L3 大模型</el-checkbox>
+      <el-checkbox v-model="enableNer" :disabled="!nerAvailable" :title="nerTitle">
+        自由文本 NER{{ nerAvailable ? "（" + (nerBackend || "已启用") + "）" : "（未启用）" }}
+      </el-checkbox>
+      <el-tag v-if="nerAvailable" size="small" :type="enableNer ? 'success' : 'info'">
+        {{ enableNer ? "NER 已开启" : "NER 已关闭" }}
+      </el-tag>
       <el-button type="primary" :loading="loading" @click="runDetect">检测</el-button>
       <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFileChange">
         <el-button>上传文件</el-button>
