@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、148 个测试通过（含 pcap 流量导入、L2 真模型联调） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、157 个测试通过（含 pcap 导入、实时旁路、L2 真模型联调） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -43,6 +43,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 单页可视化 | `GET /ui/`：上传/粘贴 → 左右对照 + 分级统计，零前端依赖 | ✅ |
 | 正式前端（Vue3 + Element Plus + ECharts） | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），Vite 构建后挂 `/app`；未构建自动回落 `/ui/` | ✅ |
 | 流量导入（服务端 pcap） | 上传 pcap/pcapng → TCP 重组 + HTTP 正文提取 → 复用同一套分级/脱敏/任务/审计；`GET /traffic/sample` 自带示例；前端「流量导入 · pcap」页面一键跑示例（`?demo=1`） | ✅ |
+| 实时旁路（跟随 pcap 文件） | 持续跟随 dumpcap/Wireshark/自研采集器写出的 pcap，按窗口把新正文汇总成检测任务（结果进任务页/看板/审计链）；`/traffic/live*` + 前端面板 + `samples/simulate_live_traffic.py` 演示脚本 | ✅ |
 | 动态脱敏视图（授权切换） | `POST /api/v1/dynamic/render` + `/dynamic/policy`：未授权只给脱敏副本、授权返回原文并写审计链；内置页面「动态脱敏」页签可直接演示 | ✅ |
 | 评测集与指标 | 自建标注集 75 条（与训练数据隔离）：L1 only 准确率 89.3% → 接 L2 真模型后 **98.7%**、安全误报率 **25.9%→0.0%**、高危漏检率 0.0%，`--compare-l2 --l2-endpoint` 一键复跑 | ✅ |
 | L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 800 条（30% 困难负例）、数据体检、微调 + ONNX 导出；本机已训出真模型（macro-F1 0.9844、benign F1 0.954） | ✅ |

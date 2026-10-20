@@ -9,6 +9,7 @@
 | --- | --- | --- |
 | 文本/JSON/CSV/SQL/Word/PDF 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量；Word 段落 `p{n}` / 表格 `table{表}.{行}.{列}`；PDF 按页 `page{n}`（依赖可选 `pdfplumber`） |
 | pcap 流量导入（服务端） | ✅ | 上传 pcap/pcapng → TCP 重组 + HTTP 请求解析 → 每个正文当一个片段，复用同一套识别/分级/脱敏/任务/审计；`GET /traffic/sample` 提供自带示例（`samples/demo-traffic.pcap`）；HTTPS、压缩体与分块传输暂不解析 |
+| 实时旁路（跟随 pcap 文件） | ✅ | 服务端持续跟随一个不断增长的 pcap（由 dumpcap/Wireshark/自研采集器写），按「落库窗口」把新正文汇总成检测任务；`/traffic/live*` 管理会话，演示脚本 `samples/simulate_live_traffic.py`；只支持经典 pcap |
 | L1 规则识别 | ✅ | 12 条规则 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验 |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
@@ -32,7 +33,7 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 143 个用例
+python -m pytest -q            # 157 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
 cd ../web && npm install && npm run build && cd ../server
@@ -162,6 +163,11 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/traffic/formats` | 流量导入支持的格式与限制（pcap/pcapng、上传上限） |
 | POST | `/traffic/import` | 上传 pcap：解析 HTTP 正文并创建检测任务（201 + 任务 ID 与解析统计） |
 | GET | `/traffic/sample` | 下载自带示例抓包 `demo-traffic.pcap`（3 条会话，含 L3/L2/SAFE） |
+| POST | `/traffic/ingest` | 外部推送正文片段（Go 采集端/Agent 用），复用同一套识别与落库 |
+| POST | `/traffic/live/start` | 开始实时跟随：`{pcap_path, interval_ms, window_s, ...}` → 返回会话（201） |
+| GET | `/traffic/live` | 实时会话列表（报文/片段/窗口任务数、最近任务、最近错误） |
+| POST | `/traffic/live/{live_id}/stop` | 停止跟随（会把未写完的窗口先落库） |
+| DELETE | `/traffic/live` | 清理已停止的会话 |
 | POST | `/tasks` | 上传文件建任务 |
 | POST | `/tasks/text` | 粘贴文本建任务 |
 | GET | `/tasks` / `/tasks/{id}` | 任务列表 / 详情 |
@@ -178,7 +184,38 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。
 
-## 6. 配置（环境变量）
+## 6. 实时旁路（跟随 pcap 文件）
+
+服务端**不直接抓网卡**：Npcap/libpcap 需要 C 绑定与管理员权限，会破坏"纯标准库、可移植、零外网"的部署口径。
+抓包交给外部工具持续写文件，服务端只做「文件增长 → 增量解析 → 按窗口检测」：
+
+```powershell
+# 终端 1：起服务
+python -m uvicorn app.main:app --port 8090
+
+# 终端 2：模拟持续抓包（每 1s 追加一条含敏感正文的 HTTP 会话）
+python samples/simulate_live_traffic.py --interval 1.0 --rounds 20
+
+# 终端 3：开始跟随（也可以直接在 /app/ → 流量导入 → 实时旁路 点按钮）
+curl.exe -s -X POST http://127.0.0.1:8090/api/v1/traffic/live/start ^
+  -H "Content-Type: application/json" -d "{"pcap_path":"data/live.pcap","interval_ms":500,"window_s":2.0}"
+```
+
+真实场景把 `pcap_path` 指向 dumpcap 的滚动输出即可，例如：
+
+```powershell
+dumpcap -i 1 -w data/live.pcap -b filesize:10240
+```
+
+语义与边界：
+
+- **窗口 = 一个任务**：`window_s` 到了就把这段时间新出现的正文汇总成一个检测任务，结果自动进「任务与审计链」「统计看板」，审计链照常逐条追加；
+- **去重**：同一 HTTP 请求（方法+路径+正文）只检测一次，跨窗口重复的握手/重传不会重复报；
+- **延迟**：最坏 = `interval_ms` + `window_s`，默认约 2.5 s；
+- **不支持的**：pcapng 实时跟随（用文件导入）、HTTPS 密文、压缩体、分块传输；
+- **权限**：只允许跟随 `data_dir` 下的文件（默认 `data/`），避免任意文件读取。
+
+## 7. 配置（环境变量）
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -197,7 +234,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | `FLOWMASK_MAX_UPLOAD_MB` | `20` | 上传大小上限 |
 | `FLOWMASK_CORS_ORIGINS` | 本机 5173/8080 | 允许跨域的前端地址，逗号分隔 |
 
-## 7. 代码结构
+## 8. 代码结构
 
 ```text
 server/
@@ -227,12 +264,18 @@ server/
       deps.py          鉴权、操作人、流水线单例
       schemas.py       请求/响应模型
       routes_*.py      health/detect/tasks/findings/stats/rules/audit/dynamic/traffic
+    traffic/
+      pcap.py          pcap/pcapng 解析、write_pcap
+      frames.py        以太网/IP/TCP/UDP → Frame（载荷定位）
+      streams.py       会话聚合（TCP 重组）+ HTTP 正文拆分 + 内容类型识别
+      importer.py      抓包 → Document（复用解析/识别/任务链路）
+      live.py          实时旁路：增量跟随 pcap 文件 + 窗口落库
   l2_service/          L2 语义推理服务（mock / onnx 后端 + /v1/classify）
   l2_training/         自举数据集、弱标注、微调脚本
   l3_service/          L3 护栏推理服务（mock / hf 后端 + /v1/judge，Qwen3Guard-Gen-0.6B）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（75 条）与评测说明
-  tests/               143 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入
+  tests/               157 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路
   pyproject.toml
 web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
   src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView / TrafficView
@@ -240,7 +283,7 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
   src/highlight.js     命中区间高亮 + 脱敏副本渲染
 ```
 
-## 8. 设计要点（答辩口径）
+## 9. 设计要点（答辩口径）
 
 1. **原文不落库**：库里只存 `input_hash`（原文 SHA-256）、脱敏副本与哈希链字段；检索比对靠哈希，泄露风险最低。
 2. **分级识别按成本升级**：L1 微秒~毫秒级全量跑；只有 L1 命中且分数落在 0.25~0.85 灰区的样本才送 L3 复核；L3 只在 `Unsafe` 时升级，`Controversial/Safe` 只记理由，避免小模型把低危抬成中危。L2/L3 均可在配置里关掉，关掉即「纯规则模式」，链路不阻塞。
@@ -248,9 +291,9 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
 4. **可复算可审计**：每条 finding 带 `rule_ids`、`confidence_vector`、`model_chain`、`reasons`；审计日志与 finding 一一对应，`prev_hash` 串成链，任何字段改动都会在 `/audit/verify` 暴露。
 5. **模块化便于扩展**：解析器、识别器、算子、导出格式都是小函数/协议 + 注册表，新增格式或模型不需改主流程。
 
-## 9. 下一步
+## 10. 下一步
 
 - **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
 - **LLM 敏感度调优**：Qwen3Guard-Gen-0.6B 零样本偏保守，可换 4B 或按本域标注微调，让 L3 真正贡献召回；
-- **实时旁路**：把 pcap 文件导入升级为网卡实时抓包（Python 侧 raw socket / 复用 Go 采集端），`/traffic/*` 增加流式接口；
+- **网卡直采（可选）**：实时旁路已支持跟随 pcap 文件（dumpcap/Wireshark/自研采集器写）；若要服务端直接抓网卡，需引入 Npcap/libpcap（管理员权限）作为可选增强；
 - 交付侧：只保留开发与联调，答辩材料由他人负责。
