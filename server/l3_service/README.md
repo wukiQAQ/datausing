@@ -85,3 +85,27 @@ Qwen3Guard 的生成结果不是稳定 JSON，`parse_guard_text()` 兼容三种�
 | 触发比例 | 只对 L1 命中且分数落在 0.25~0.85 的样本调用 |
 
 因为触发面窄，L3 不参与"全量扫描"，只承担**解释与兜底**这两个职责。
+
+## 指令裁判模式（instruct，推荐）
+
+Qwen3Guard 这类护栏模型是「内容安全」口径（暴力/仇恨/越狱），对中文 PII 只会模糊地给
+`Controversial`，无法直接服务本项目的四级分级。`instruct` 模式改用**指令模型当分级裁判**：
+按写好的评分细则直接输出一行 JSON，既给级别建议也给中文理由与命中类别。
+
+```powershell
+$env:FLOWMASK_L3_MODE = "instruct"
+$env:FLOWMASK_L3_MODEL_DIR = "models/qwen2.5-1.5b-instruct"   # ModelScope 下载
+$env:FLOWMASK_L3_DEVICE = "cuda"                              # CPU 也能跑，只是慢
+python -m l3_service                                          # 127.0.0.1:8092
+```
+
+- 输出契约：`{"level":"L3|L2|L1|SAFE","categories":["phone","id_card","..."],"reason":"一句话中文理由"}`
+  → 归一化为 `risk`（L3→Unsafe、L2/L1→Controversial、SAFE→Safe）+ `level` 建议；
+- 真权重实测（RTX 5060 8GB / CUDA bf16）：单条约 1.0~1.3 s；强敏感 PII 文本判 `Unsafe/L3`，
+  「文档示例/仅用于联调」判 `Safe/SAFE`，只含姓名+地址判 `Controversial/L1`；
+- 两个实现细节：① 判定结果按文本内容缓存（512 条），策略矩阵反复评测时不会重复推理；
+  ② prompt 里 JSON 示例的花括号必须转义（`.format` 会把 `{"name"...}` 当成占位符，
+  否则报 `KeyError: '"name"'`）。
+
+> 是否让 L3 影响最终分级由主服务的策略决定（默认「只升不降 + 封顶 L2」，见 `server/README.md` 第 4 节）；
+> 本服务只负责「给判定 + 给理由」。

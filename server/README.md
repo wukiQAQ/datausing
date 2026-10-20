@@ -14,7 +14,7 @@
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
 | L2 语义识别（独立推理服务） | ✅ | `l2_service/` HTTP 服务：mock / ONNX int8 / auto 三后端；已用 bert-base-chinese 微调模型实测（单条 10–33 ms，CPU） |
-| L3 本地大模型复核 | ✅ | 独立 `l3_service`（Qwen3Guard-Gen-0.6B，1.5 GB 本地权重、CPU 可跑）：只对 L1 模糊样本给安全判定 + 中文解释，只在高危方向升级，异常即降级 |
+| L3 本地大模型复核 | ✅ | 独立 `l3_service` 双后端：**指令裁判**（Qwen2.5-1.5B-Instruct，按本项目四级标准直出 `level/reason/categories`，默认推荐）或**护栏**（Qwen3Guard-Gen-0.6B，Safe/Controversial/Unsafe）；只复核 L1 灰区、只升不降、默认封顶 L2，异常即降级 |
 | 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
@@ -33,7 +33,7 @@
 ```powershell
 cd server
 pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 157 个用例
+python -m pytest -q            # 174 个用例
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
 cd ../web && npm install && npm run build && cd ../server
@@ -99,16 +99,25 @@ python -m uvicorn app.main:app --port 8090
 > 训练/导出细节（困难负例、`labels.json` 回退、`dynamo=False`、padding mask）见
 > [`l2_training/README.md`](l2_training/README.md) 与 [`l2_service/README.md`](l2_service/README.md)。
 
-## 4. L3 护栏服务（Qwen3Guard）
+## 4. L3 大模型复核（指令裁判 / 护栏双后端）
 
-第三级识别跑在独立进程里，职责是「复核 + 解释」而不是重新分级：
+第三级识别跑在独立进程里，职责是「复核 + 解释」，不重新定级。两种后端按需选：
+
+| 模式 | 权重 | 输出 | 说明 |
+| --- | --- | --- | --- |
+| `FLOWMASK_L3_MODE=instruct`（**推荐**） | Qwen2.5-1.5B-Instruct（3.0 GB） | 一行 JSON：`{"level":"L3\|L2\|L1\|SAFE","categories":[...],"reason":"…"}` | 按本项目四级标准直接给分级建议与中文理由 |
+| `FLOWMASK_L3_MODE=hf` | Qwen3Guard-Gen-0.6B（1.5 GB） | `Safe / Controversial / Unsafe` | 内容安全口径，对中文 PII 偏保守（几乎不判 Unsafe） |
+| `FLOWMASK_L3_MODE=mock` | 不需要权重 | 启发式 | 测试 / 无权重演示 |
 
 ```powershell
 # 1) 依赖 + 权重（国内走 ModelScope）
 python -m pip install torch transformers modelscope
+python -c "from modelscope import snapshot_download; print(snapshot_download('Qwen/Qwen2.5-1.5B-Instruct', local_dir='models/qwen2.5-1.5b-instruct'))"
 python -c "from modelscope import snapshot_download; print(snapshot_download('Qwen/Qwen3Guard-Gen-0.6B', local_dir='models/qwen3guard-gen-0.6b'))"
 
-# 2) 起服务（默认 127.0.0.1:8092）
+# 2) 起服务（默认 127.0.0.1:8092；GPU 用 FLOWMASK_L3_DEVICE=cuda）
+$env:FLOWMASK_L3_MODE = "instruct"
+$env:FLOWMASK_L3_MODEL_DIR = "models/qwen2.5-1.5b-instruct"
 cd server && python -m l3_service
 
 # 3) 让一体机启用 L3
@@ -116,26 +125,37 @@ $env:FLOWMASK_ENABLE_L3 = "1"
 $env:FLOWMASK_L3_ENDPOINT = "http://127.0.0.1:8092/v1/judge"
 ```
 
-协同规则（`app/identify/pipeline.py`）：
+协同策略（`app/identify/pipeline.py`，全部可用环境变量改）：
 
 - 只对 **L1 命中且分数落在灰区（0.25~0.85）、且不是直达高危** 的样本调用，触发面窄；
-- 判定映射：`Unsafe→L3`、`Controversial→L2`、`Safe→SAFE`，但**只有 `Unsafe` 会真正升级级别**；
-  `Controversial/Safe` 仅记录理由与证据——实测放开"任意升级"会把分级准确率从 98.7% 拉低到 94.7%；
-- 服务超时/不可用 → `degraded=true`，结论继续用 L1/L2，不阻塞主链路。
+- **只升不降**，且**所有升级（含 Unsafe）默认封顶 L2**（`FLOWMASK_L3_MAX_TARGET=L3` 才允许升高危）；
+- 采信指令模型的分级建议（`FLOWMASK_L3_TRUST_LEVEL_HINT=1`，默认开）；
+- 类别感知（模型点出 PII 就抬到中危）**默认关**（`FLOWMASK_L3_CATEGORY_RAISE=1` 开启）；
+- 服务超时/不可用 → `degraded=true`，保留 L1/L2 结论，不阻塞主链路。
 
-真权重实测（75 条评测集，CPU）：
+**策略矩阵**（同一 75 条评测集、同一 L3 端点；`cd server && python -m l3_measure` 复现）：
+
+| 口径 | 分级准确率 | Macro-F1 | 判错 | 结论 |
+| --- | ---: | ---: | ---: | --- |
+| 只认 Unsafe，封顶 L2（**当前默认**） | **98.7%** | 0.988 | 1 | 与 L1+L2 持平，不扣分 |
+| 采信分级建议，封顶 L2 | **98.7%** | 0.988 | 1 | 同上 |
+| 类别感知（PII → 至少中危） | 85.3% | 0.684 | 11 | name/email/address 类低危全被抬成中危，**关** |
+| 类别感知 + 分级建议 | 85.3% | 0.684 | 11 | 同上 |
+| 允许抬到 L3 | 84.0% | 0.671 | 12 | 连「诊断: 2型糖尿病」都被判 Unsafe/L3，**关** |
+
+指令裁判真权重实测（75 条评测集，RTX 5060 8GB / CUDA bf16，单条约 1.0~1.3 s；首次调用含加载约 10 s）：
 
 | 指标 | 数值 |
 | --- | ---: |
-| L3 触发条数 | 29/75（38.7%，评测集敏感样本密集；真实流量远低于此） |
-| 判定分布 | Safe 20 / Controversial 9 / Unsafe 0 |
-| 单条延迟 | 0.3~0.9 s（CPU 单条，含生成） |
-| 对分级的影响 | 0 次升级、0 次降级（策略限制），只贡献解释与证据 |
-| 分级准确率 | 仍为 **98.7%**（L1 + L2 提供，L3 不再加分也不扣分） |
+| L3 触发（finding 级） | 47 次（评测集敏感样本密集；真实流量远低于此） |
+| 判定分布 | Controversial 44 / Unsafe 2 / Safe 1；分级建议 L1 41 / L2 3 / L3 2 / SAFE 1 |
+| 对分级的影响 | 0 次升/降级（默认口径），只贡献解释与证据 |
+| 分级准确率 | 仍为 **98.7%**（L1 + L2 提供；L3 不扣分） |
 
-> 局限（写在明面上）：Qwen3Guard-Gen-0.6B 零样本对中文 PII 偏保守，几乎不判 Unsafe。
-> 它的价值在**可解释 + 兜底**；要让 L3 真正提升召回，需要 4B 权重或按本域标注微调，
-> 这部分列入下一步（见第 9 节）。
+> 4B 复核结论：Qwen3Guard-Gen-4B（8.56 GB 权重）同口径 Unsafe 仍为 0、Controversial 9→5、
+> 平均延迟 640.8 ms→3413.7 ms（CPU bf16）。它是**内容安全**分类器，对中文 PII 只给
+> Controversial/PII，换 4B 对分级零收益、更慢，因此不采用；要让 L3 真正贡献召回，
+> 应按本域标注微调（可复用 `l2_training` 的弱标注/训练管线）或换更大指令模型。
 
 ## 5. 评测跑分
 
@@ -229,7 +249,11 @@ dumpcap -i 1 -w data/live.pcap -b filesize:10240
 | `FLOWMASK_L3_MODE` | `http` | `http` 调独立服务；`ollama` 直连 Ollama |
 | `FLOWMASK_L3_ENDPOINT` | `http://127.0.0.1:8092/v1/judge` | L3 服务地址（`l3_service`） |
 | `FLOWMASK_L3_MODEL` | `qwen3guard-gen-0.6b` | 模型名（仅展示/日志用） |
-| `FLOWMASK_L3_MODEL_DIR` | `server/models/qwen3guard-gen-0.6b` | 本地权重目录（ModelScope 下载到此处） |
+| `FLOWMASK_L3_MODEL_DIR` | `server/models/qwen3guard-gen-0.6b` | 本地权重目录（ModelScope 下载到此处；instruct 模式指向 `qwen2.5-1.5b-instruct`） |
+| `FLOWMASK_L3_DEVICE` / `FLOWMASK_L3_DTYPE` | `auto` / `auto` | `cuda`/`cpu`；`auto`=GPU bf16、CPU fp32 |
+| `FLOWMASK_L3_MAX_TARGET` | `L2` | L3 升级上限；设 `L3` 才允许抬到高危 |
+| `FLOWMASK_L3_TRUST_LEVEL_HINT` | `1` | 是否采信指令模型的分级建议 |
+| `FLOWMASK_L3_CATEGORY_RAISE` | `0` | 类别感知（点出 PII 即抬中危）；实测会显著降准确率，默认关 |
 | `FLOWMASK_L2_TIMEOUT_S` / `FLOWMASK_L3_TIMEOUT_S` | `0.5` / `5.0` | 秒；超时即降级并标记 `degraded` |
 | `FLOWMASK_MAX_UPLOAD_MB` | `20` | 上传大小上限 |
 | `FLOWMASK_CORS_ORIGINS` | 本机 5173/8080 | 允许跨域的前端地址，逗号分隔 |
@@ -272,10 +296,10 @@ server/
       live.py          实时旁路：增量跟随 pcap 文件 + 窗口落库
   l2_service/          L2 语义推理服务（mock / onnx 后端 + /v1/classify）
   l2_training/         自举数据集、弱标注、微调脚本
-  l3_service/          L3 护栏推理服务（mock / hf 后端 + /v1/judge，Qwen3Guard-Gen-0.6B）
+  l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（75 条）与评测说明
-  tests/               157 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路
+  tests/               174 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路
   pyproject.toml
 web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
   src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView / TrafficView
@@ -294,6 +318,6 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
 ## 10. 下一步
 
 - **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
-- **LLM 敏感度调优**：Qwen3Guard-Gen-0.6B 零样本偏保守，可换 4B 或按本域标注微调，让 L3 真正贡献召回；
+- **LLM 敏感度调优**：L3 已接指令裁判（Qwen2.5-1.5B-Instruct），但零样本仍不足以稳定提升分级（见第 4 节矩阵）；下一步按本域标注微调 / 换更大指令模型；
 - **网卡直采（可选）**：实时旁路已支持跟随 pcap 文件（dumpcap/Wireshark/自研采集器写）；若要服务端直接抓网卡，需引入 Npcap/libpcap（管理员权限）作为可选增强；
 - 交付侧：只保留开发与联调，答辩材料由他人负责。
