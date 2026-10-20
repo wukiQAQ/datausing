@@ -6,6 +6,7 @@ Swagger（``/docs``）直接读这里，因此描述写清楚：初赛评审点�
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -244,3 +245,70 @@ class TrafficImportOut(BaseModel):
     messages: int
     segments: int
     operator_id: str
+
+
+class IngestSegmentIn(BaseModel):
+    """外部采集器推送的一条正文。"""
+
+    path: str = Field(min_length=1, max_length=512, description="来源标识，如 tcp 10.0.0.5:5001→10.0.0.9:80 POST /api/order")
+    text: str = Field(min_length=1, max_length=200_000, description="待检测正文（原文不落库）")
+    hint: str = Field(default="", max_length=128, description="字段名/列名等上下文，帮助识别姓名/地址这类弱规则")
+
+
+class TrafficIngestIn(BaseModel):
+    """旁路 agent 推送一批正文：一次请求 = 一个检测任务。"""
+
+    source: str = Field(default="agent", max_length=128, description="采集来源标识（会写进任务 source）")
+    content_type: str = Field(default="ingest", max_length=32)
+    segments: list[IngestSegmentIn] = Field(min_length=1, max_length=200)
+    enable_l2: bool = Field(default=False)
+    enable_l3: bool = Field(default=False)
+    mask_level: str | None = Field(default=None)
+    min_level: str = Field(default="SAFE")
+
+
+class TrafficIngestOut(BaseModel):
+    """推送结果：后台任务号，检测结果从 /tasks/{id} 或看板查。"""
+
+    task_id: str
+    source: str
+    segments: int
+    operator_id: str
+
+
+class LiveStartIn(BaseModel):
+    """开始实时跟随一个持续写入的 pcap 文件。"""
+
+    pcap_path: str = Field(
+        default="live.pcap",
+        max_length=512,
+        description="抓包文件路径（相对数据目录，或数据目录下的绝对路径）",
+    )
+    interval_ms: int = Field(default=500, ge=100, le=10_000, description="轮询间隔（毫秒）")
+    window_s: float = Field(default=2.0, ge=0.2, le=60.0, description="聚合窗口：每窗口生成一个任务")
+    enable_l2: bool = False
+    enable_l3: bool = False
+    mask_level: str | None = None
+    min_level: str = "SAFE"
+
+
+class LiveOut(BaseModel):
+    """实时跟随的当前状态。``running=false`` 表示已停止（含线程异常退出）。"""
+
+    live_id: str
+    pcap_path: str
+    source: str
+    running: bool
+    started_at: datetime
+    stopped_at: datetime | None = None
+    interval_ms: int
+    window_s: float
+    packets: int
+    segments: int
+    tasks: int
+    last_task_id: str | None = None
+    last_error: str = ""
+
+
+class LiveListOut(BaseModel):
+    sessions: list[LiveOut] = Field(default_factory=list)

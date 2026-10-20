@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
@@ -36,6 +37,7 @@ from .api.routes_tasks import router as tasks_router
 from .api.routes_traffic import router as traffic_router
 from .core.config import get_settings
 from .core.db import get_database
+from .traffic.live import get_live_manager
 
 WEBUI_DIR = Path(__file__).resolve().parent / "webui"
 # 正式前端（Vue3 + Element Plus + ECharts）：构建产物在 server/web/dist，
@@ -56,6 +58,15 @@ FlowMask：网络与文档流量的分级脱敏与审计溯源系统（数据安
 """
 
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """应用退出时停掉所有实时跟随线程，避免残留线程继续写库。"""
+    try:
+        yield
+    finally:
+        get_live_manager().stop_all()
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     db = get_database()
@@ -63,6 +74,7 @@ def create_app() -> FastAPI:
     sync_active_rules(db)
 
     app = FastAPI(
+        lifespan=_lifespan,
         title="FlowMask API",
         version=__version__,
         description=DESCRIPTION,
@@ -70,7 +82,7 @@ def create_app() -> FastAPI:
             {"name": "system", "description": "健康检查"},
             {"name": "detect", "description": "即时检测（不落库，用于左右对照演示）"},
             {"name": "tasks", "description": "后台任务：上传/粘贴 → 识别 → 落库 → 审计"},
-            {"name": "traffic", "description": "流量导入：pcap → 正文 → 同一套识别分级与审计"},
+            {"name": "traffic", "description": "流量接入：pcap 导入 / 外部推送 / 实时旁路跟随 → 同一套识别分级与审计"},
             {"name": "findings", "description": "检测结果查询"},
             {"name": "stats", "description": "看板统计"},
             {"name": "rules", "description": "内置/自定义敏感规则"},
