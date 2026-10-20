@@ -99,7 +99,15 @@ def main(argv: list[str] | None = None) -> int:
         from onnxruntime.quantization import QuantType, quantize_dynamic  # noqa: PLC0415
 
         int8_path = args.out / "model.int8.onnx"
-        quantize_dynamic(str(onnx_path), str(int8_path), weight_type=QuantType.QInt8)
+        # per_channel 不能省：按张量（per-tensor）量化在中文 RoBERTa-wwm 上会把手写
+        # bridge/query 权重压坏，实测输出全空（phone/id_card 置信度掉到 0.0x），
+        # 而 per_channel 后与 fp32 基本一致（phone 0.915 vs 0.917）。
+        quantize_dynamic(
+            str(onnx_path),
+            str(int8_path),
+            weight_type=QuantType.QInt8,
+            per_channel=True,
+        )
         print(f"int8 量化完成：{int8_path}（体积约缩为 1/4，CPU 推理约 5-20ms）")
 
     tokenizer.backend_tokenizer.save(str(args.out / "tokenizer.json"))
