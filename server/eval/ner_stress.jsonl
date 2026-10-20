@@ -1,40 +1,200 @@
-{"id": "STRESS-001", "format": "text", "content": "仓库位于日本，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=日本），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-002", "format": "text", "content": "本周巡检覆盖北京，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=北京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-003", "format": "text", "content": "客户贾老板反馈：仓库位于中国，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=贾老板, LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-004", "format": "text", "content": "同事晏小花昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=晏小花），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-005", "format": "text", "content": "仓库位于荷兰，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=荷兰），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-006", "format": "text", "content": "同事田喜碧昨天从台灣赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=田喜碧, LOC=台灣），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-007", "format": "text", "content": "这份材料由赵新民整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-008", "format": "text", "content": "仓库位于韩国我，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=韩国我），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-009", "format": "text", "content": "何辛反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=何辛），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-010", "format": "text", "content": "客户任志强反馈：仓库位于北京，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=任志强, LOC=北京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-011", "format": "text", "content": "仓库位于奥林匹克公园，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=奥林匹克公园），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-012", "format": "text", "content": "这份材料由钟汉良整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=钟汉良），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-013", "format": "text", "content": "杨壮反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨壮），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-014", "format": "text", "content": "刘诗诗反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=刘诗诗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-015", "format": "text", "content": "本周巡检覆盖北京，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=北京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-016", "format": "text", "content": "这份材料由邵小敏整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=邵小敏），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-017", "format": "text", "content": "这份材料由张羽整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=张羽），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-018", "format": "text", "content": "仓库位于电器城，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=电器城），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-019", "format": "text", "content": "同事曾若彤昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=曾若彤），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-020", "format": "text", "content": "这份材料由吴秀波整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=吴秀波），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-021", "format": "text", "content": "柯柏文反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=柯柏文），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-022", "format": "text", "content": "谢小玲在中国参加培训，回程车票已改签到周日。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=谢小玲, LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-023", "format": "text", "content": "本周巡检覆盖瑞士，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=瑞士），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-024", "format": "text", "content": "舒淇反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=舒淇），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-025", "format": "text", "content": "同事陈雨昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈雨），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-026", "format": "text", "content": "这份材料由刘同整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=刘同），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-027", "format": "text", "content": "叶小丢反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=叶小丢），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-028", "format": "text", "content": "仓库位于利物浦，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=利物浦），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-029", "format": "text", "content": "同事魏晨昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=魏晨），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-030", "format": "text", "content": "同事萧萧静昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=萧萧静），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-031", "format": "text", "content": "这份材料由班婉玲整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=班婉玲），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-032", "format": "text", "content": "毛爷爷反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=毛爷爷），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-033", "format": "text", "content": "本周巡检覆盖游乐园，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=游乐园），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-034", "format": "text", "content": "本周巡检覆盖宿舍，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=宿舍），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-035", "format": "text", "content": "仓库位于河南，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=河南），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-036", "format": "text", "content": "本周巡检覆盖枣在，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=枣在），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-037", "format": "text", "content": "本周巡检覆盖美国，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-038", "format": "text", "content": "这份材料由马靖昊整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=马靖昊），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-039", "format": "text", "content": "仓库位于日本，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=日本），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
-{"id": "STRESS-040", "format": "text", "content": "同事杨素晗昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-001", "format": "text", "content": "萧亚轩反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=萧亚轩），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-002", "format": "text", "content": "韩寒反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=韩寒），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-003", "format": "text", "content": "段林希反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=段林希），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-004", "format": "text", "content": "同事张珂铭昨天从俄罗斯赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=张珂铭, LOC=俄罗斯），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-005", "format": "text", "content": "本周巡检覆盖羊湖，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=羊湖），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-006", "format": "text", "content": "设备清单里有一批在枣在等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=枣在），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-007", "format": "text", "content": "上周曾大萌去镇海出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=曾大萌, LOC=镇海），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-008", "format": "text", "content": "客户何主席反馈：仓库位于宿舍，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=何主席, LOC=宿舍），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-009", "format": "text", "content": "这份材料由魏民整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=魏民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-010", "format": "text", "content": "本周巡检覆盖茶餐厅，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=茶餐厅），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-011", "format": "text", "content": "易天正刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=易天正），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-012", "format": "text", "content": "这份材料由张治成整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=张治成），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-013", "format": "text", "content": "卢璐刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=卢璐），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-014", "format": "text", "content": "设备清单里有一批在家中等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=家中），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-015", "format": "text", "content": "同事杨素晗昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-016", "format": "text", "content": "评审意见里提到要请金秀贤补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=金秀贤），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-017", "format": "text", "content": "下个月的渠道会安排在中国，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-018", "format": "text", "content": "季总反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=季总），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-019", "format": "text", "content": "仓库位于郑州市，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=郑州市），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-020", "format": "text", "content": "孙坚反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=孙坚），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-021", "format": "text", "content": "仓库位于美日，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美日），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-022", "format": "text", "content": "钟汉良刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=钟汉良），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-023", "format": "text", "content": "评审意见里提到要请杨素晗补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-024", "format": "text", "content": "供应商吴佩把样品寄到了武汉的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=吴佩, LOC=武汉），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-025", "format": "text", "content": "苏正直在南宁市参加培训，回程车票已改签到周日。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=苏正直, LOC=南宁市），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-026", "format": "text", "content": "现场照片是在韩国拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=韩国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-027", "format": "text", "content": "吴丹宁反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=吴丹宁），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-028", "format": "text", "content": "仓库位于新乡，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=新乡），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-029", "format": "text", "content": "李厚林反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=李厚林），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-030", "format": "text", "content": "同事赵新民昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-031", "format": "text", "content": "评审意见里提到要请方舟子补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=方舟子），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-032", "format": "text", "content": "设备清单里有一批在河南等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=河南），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-033", "format": "text", "content": "客户贾老板反馈：仓库位于中国，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=贾老板, LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-034", "format": "text", "content": "设备清单里有一批在中国等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-035", "format": "text", "content": "这份材料由江小姐整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=江小姐），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-036", "format": "text", "content": "供应商居民把样品寄到了丰台的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=居民, LOC=丰台），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-037", "format": "text", "content": "同事张羽昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=张羽），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-038", "format": "text", "content": "评审意见里提到要请赵新民补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-039", "format": "text", "content": "这份材料由曹芙嘉整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=曹芙嘉），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-040", "format": "text", "content": "仓库位于日本，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=日本），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-041", "format": "text", "content": "徐浩刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=徐浩），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-042", "format": "text", "content": "评审意见里提到要请宋院长补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=宋院长），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-043", "format": "text", "content": "仓库位于东西大道，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=东西大道），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-044", "format": "text", "content": "上周李帆去嘉鱼出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=李帆, LOC=嘉鱼），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-045", "format": "text", "content": "同事曾若彤昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=曾若彤），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-046", "format": "text", "content": "本周巡检覆盖武汉，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=武汉），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-047", "format": "text", "content": "供应商徐小平把样品寄到了河北的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=徐小平, LOC=河北），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-048", "format": "text", "content": "苏歆反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=苏歆），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-049", "format": "text", "content": "上周赵子龙去台湾出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵子龙, LOC=台湾），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-050", "format": "text", "content": "上周张婕去北京出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=张婕, LOC=北京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-051", "format": "text", "content": "赵新民反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-052", "format": "text", "content": "同事顾老师昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾老师），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-053", "format": "text", "content": "设备清单里有一批在雅安等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=雅安），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-054", "format": "text", "content": "顾老师反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾老师），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-055", "format": "text", "content": "成人礼刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=成人礼），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-056", "format": "text", "content": "柯柏文反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=柯柏文），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-057", "format": "text", "content": "同事雷明昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=雷明），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-058", "format": "text", "content": "这份材料由蒙古人整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=蒙古人），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-059", "format": "text", "content": "本周巡检覆盖浦东，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=浦东），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-060", "format": "text", "content": "客户张拓反馈：仓库位于紫玉山庄，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=张拓, LOC=紫玉山庄），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-061", "format": "text", "content": "同事曾若彤昨天赶过来，会议上提了下季度的采购预算。（记录 763）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=曾若彤），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-062", "format": "text", "content": "现场照片是在美国拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-063", "format": "text", "content": "仓库位于彩虹桥，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=彩虹桥），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-064", "format": "text", "content": "同事龙妈昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=龙妈），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-065", "format": "text", "content": "俞婕刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=俞婕），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-066", "format": "text", "content": "赵新民刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-067", "format": "text", "content": "杨澜反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨澜），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-068", "format": "text", "content": "现场照片是在吐鲁番拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=吐鲁番），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-069", "format": "text", "content": "评审意见里提到要请宋茜补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=宋茜），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-070", "format": "text", "content": "郭日良反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=郭日良），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-071", "format": "text", "content": "陈苏丹刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈苏丹），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-072", "format": "text", "content": "陈伊琼刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈伊琼），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-073", "format": "text", "content": "仓库位于拱桥，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=拱桥），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-074", "format": "text", "content": "徐晓菲在海淀参加培训，回程车票已改签到周日。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=徐晓菲, LOC=海淀），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-075", "format": "text", "content": "同事杨素晗昨天赶过来，会议上提了下季度的采购预算。（记录 220）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-076", "format": "text", "content": "这份材料由林小柑整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=林小柑），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-077", "format": "text", "content": "施主在寺庙参加培训，回程车票已改签到周日。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=施主, LOC=寺庙），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-078", "format": "text", "content": "这份材料由顾天池整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾天池），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-079", "format": "text", "content": "上周任志强去河北出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=任志强, LOC=河北），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-080", "format": "text", "content": "本周巡检覆盖俄罗斯，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=俄罗斯），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-081", "format": "text", "content": "下个月的渠道会安排在海南，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=海南），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-082", "format": "text", "content": "上周黎雅思去宁波海曙苗芳出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=黎雅思, LOC=宁波海曙苗芳），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-083", "format": "text", "content": "这份材料由宋茜整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=宋茜），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-084", "format": "text", "content": "赵新民反馈仓库这周需要补货，回程车票已改签到周日。（记录 456）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-085", "format": "text", "content": "设备清单里有一批在美国等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-086", "format": "text", "content": "现场照片是在白云山拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=白云山），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-087", "format": "text", "content": "仓库位于日本，本周五前需要补货。（记录 585）", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=日本），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-088", "format": "text", "content": "下个月的渠道会安排在美国，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-089", "format": "text", "content": "这份材料由何辛整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=何辛），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-090", "format": "text", "content": "仓库位于韩国，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=韩国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-091", "format": "text", "content": "评审意见里提到要请邓先生补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=邓先生），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-092", "format": "text", "content": "评审意见里提到要请方进玉补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=方进玉），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-093", "format": "text", "content": "陈光标在纽约时报公司参加培训，回程车票已改签到周日。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈光标, LOC=纽约时报公司），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-094", "format": "text", "content": "高晓松反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=高晓松），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-095", "format": "text", "content": "同事卓义峰昨天从中国赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=卓义峰, LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-096", "format": "text", "content": "本周巡检覆盖巴西，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=巴西），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-097", "format": "text", "content": "供应商连铭杰把样品寄到了厦门的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=连铭杰, LOC=厦门），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-098", "format": "text", "content": "同事陆毅昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陆毅），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-099", "format": "text", "content": "同事赵新民昨天赶过来，会议上提了下季度的采购预算。（记录 610）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-100", "format": "text", "content": "这份材料由赵本山整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵本山），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-101", "format": "text", "content": "现场照片是在美国拍的，已上传到共享盘。（记录 223）", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=美国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-102", "format": "text", "content": "同事胡劳斯昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=胡劳斯），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-103", "format": "text", "content": "设备清单里有一批在金陵等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=金陵），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-104", "format": "text", "content": "本周巡检覆盖新乡，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=新乡），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-105", "format": "text", "content": "设备清单里有一批在长街等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=长街），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-106", "format": "text", "content": "下个月的渠道会安排在石桥，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=石桥），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-107", "format": "text", "content": "本周巡检覆盖合肥，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=合肥），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-108", "format": "text", "content": "现场照片是在高宝河谷拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=高宝河谷），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-109", "format": "text", "content": "查小明刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=查小明），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-110", "format": "text", "content": "设备清单里有一批在南京等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=南京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-111", "format": "text", "content": "萧萧静刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=萧萧静），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-112", "format": "text", "content": "供应商欧巴把样品寄到了韩国的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=欧巴, LOC=韩国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-113", "format": "text", "content": "评审意见里提到要请高富帅补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=高富帅），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-114", "format": "text", "content": "解解刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=解解），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-115", "format": "text", "content": "顾天池刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾天池），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-116", "format": "text", "content": "方文山反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=方文山），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-117", "format": "text", "content": "设备清单里有一批在宁波等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=宁波），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-118", "format": "text", "content": "刘强东反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=刘强东），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-119", "format": "text", "content": "同事杨素晗昨天赶过来，会议上提了下季度的采购预算。（记录 668）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-120", "format": "text", "content": "现场照片是在南都拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=南都），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-121", "format": "text", "content": "供应商张赫宣把样品寄到了中国的仓库，请安排验收。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=张赫宣, LOC=中国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-122", "format": "text", "content": "张洁刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=张洁），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-123", "format": "text", "content": "评审意见里提到要请李毅补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=李毅），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-124", "format": "text", "content": "刘诗诗刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=刘诗诗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-125", "format": "text", "content": "评审意见里提到要请林若彤补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=林若彤），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-126", "format": "text", "content": "这份材料由杨素晗整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-127", "format": "text", "content": "同事邢凯舟昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=邢凯舟），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-128", "format": "text", "content": "成人礼反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=成人礼），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-129", "format": "text", "content": "仓库位于阿拉伯，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=阿拉伯），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-130", "format": "text", "content": "评审意见里提到要请温人意补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=温人意），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-131", "format": "text", "content": "任志强刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=任志强），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-132", "format": "text", "content": "柯震倲反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=柯震倲），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-133", "format": "text", "content": "设备清单里有一批在咸阳等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=咸阳），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-134", "format": "text", "content": "龙少刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=龙少），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-135", "format": "text", "content": "路飞耳刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=路飞耳），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-136", "format": "text", "content": "这份材料由陈晓敏整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈晓敏），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-137", "format": "text", "content": "同事王宝义昨天从长辛店街道赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=王宝义, LOC=长辛店街道），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-138", "format": "text", "content": "下个月的渠道会安排在屿岛，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=屿岛），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-139", "format": "text", "content": "评审意见里提到要请陈雨补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈雨），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-140", "format": "text", "content": "这份材料由魏晨整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=魏晨），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-141", "format": "text", "content": "同事胡劳斯昨天赶过来，会议上提了下季度的采购预算。（记录 631）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=胡劳斯），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-142", "format": "text", "content": "仓库位于深圳市，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=深圳市），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-143", "format": "text", "content": "评审意见里提到要请周苏飘补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=周苏飘），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-144", "format": "text", "content": "顾天池刚提交了离职申请，交接清单还在整理。（记录 352）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾天池），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-145", "format": "text", "content": "设备清单里有一批在希尔顿等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=希尔顿），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-146", "format": "text", "content": "设备清单里有一批在异国等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=异国），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-147", "format": "text", "content": "仓库位于唐人街，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=唐人街），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-148", "format": "text", "content": "上周胡总去武汉出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=胡总, LOC=武汉），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-149", "format": "text", "content": "下个月的渠道会安排在利物浦，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=利物浦），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-150", "format": "text", "content": "仓库位于杭州，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=杭州），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-151", "format": "text", "content": "仓库位于宿舍，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=宿舍），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-152", "format": "text", "content": "评审意见里提到要请高官补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=高官），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-153", "format": "text", "content": "这份材料由黄小阳整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=黄小阳），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-154", "format": "text", "content": "这份材料由赵新民整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-155", "format": "text", "content": "慕仪九反馈仓库这周需要补货，回程车票已改签到周日。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=慕仪九），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-156", "format": "text", "content": "客户车模反馈：仓库位于上海，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=车模, LOC=上海），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-157", "format": "text", "content": "这份材料由赵新民整理，周五前要发出去。（记录 948）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-158", "format": "text", "content": "这份材料由李嘉诚整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=李嘉诚），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-159", "format": "text", "content": "评审意见里提到要请杨素晗补充一下预算说明。（记录 467）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-160", "format": "text", "content": "设备清单里有一批在阿里山休园等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=阿里山休园），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-161", "format": "text", "content": "解解刚提交了离职申请，交接清单还在整理。（记录 799）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=解解），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-162", "format": "text", "content": "同事宋茜昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=宋茜），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-163", "format": "text", "content": "下个月的渠道会安排在澳洲，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=澳洲），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-164", "format": "text", "content": "评审意见里提到要请陈翔补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈翔），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-165", "format": "text", "content": "熊孩子刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=熊孩子），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-166", "format": "text", "content": "仓库位于江苏，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=江苏），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-167", "format": "text", "content": "同事顾天池昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=顾天池），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-168", "format": "text", "content": "本周巡检覆盖日本，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=日本），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-169", "format": "text", "content": "评审意见里提到要请魏晨补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=魏晨），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-170", "format": "text", "content": "同事赵新民昨天赶过来，会议上提了下季度的采购预算。（记录 934）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-171", "format": "text", "content": "赵新民反馈仓库这周需要补货，回程车票已改签到周日。（记录 566）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-172", "format": "text", "content": "这份材料由徐森洁整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=徐森洁），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-173", "format": "text", "content": "仓库位于欧美，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=欧美），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-174", "format": "text", "content": "下个月的渠道会安排在街头巷尾，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=街头巷尾），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-175", "format": "text", "content": "仓库位于芜湖，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=芜湖），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-176", "format": "text", "content": "下个月的渠道会安排在山东，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=山东），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-177", "format": "text", "content": "仓库位于河南，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=河南），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-178", "format": "text", "content": "洪晃刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=洪晃），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-179", "format": "text", "content": "同事杨素晗昨天赶过来，会议上提了下季度的采购预算。（记录 699）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨素晗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-180", "format": "text", "content": "评审意见里提到要请雷明补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=雷明），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-181", "format": "text", "content": "上周马伊琍去海淀出差，回来后整理了对接材料。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=马伊琍, LOC=海淀），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-182", "format": "text", "content": "陈翔刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈翔），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-183", "format": "text", "content": "这份材料由杨洋整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=杨洋），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-184", "format": "text", "content": "设备清单里有一批在大峡谷等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=大峡谷），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-185", "format": "text", "content": "下个月的渠道会安排在客餐厅，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=客餐厅），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-186", "format": "text", "content": "同事马里奥昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=马里奥），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-187", "format": "text", "content": "薛英杰刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=薛英杰），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-188", "format": "text", "content": "现场照片是在长街拍的，已上传到共享盘。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=长街），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-189", "format": "text", "content": "仓库位于游乐园，本周五前需要补货。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=游乐园），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-190", "format": "text", "content": "唐玄宗刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=唐玄宗），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-191", "format": "text", "content": "设备清单里有一批在荷兰等待调拨。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=荷兰），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-192", "format": "text", "content": "本周巡检覆盖意大利，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=意大利），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-193", "format": "text", "content": "陈芭刚提交了离职申请，交接清单还在整理。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=陈芭），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-194", "format": "text", "content": "同事宋灵姣昨天赶过来，会议上提了下季度的采购预算。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=宋灵姣），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-195", "format": "text", "content": "这份材料由马靖昊整理，周五前要发出去。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=马靖昊），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-196", "format": "text", "content": "本周巡检覆盖广东，未发现异常。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=广东），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-197", "format": "text", "content": "评审意见里提到要请徐妍补充一下预算说明。", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=徐妍），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-198", "format": "text", "content": "客户段钢反馈：仓库位于北京，本周五前需要补货。", "level": "L1", "types": ["name", "address"], "note": "公开语料 weibo_ner/dev 抽样（PER=段钢, LOC=北京），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-199", "format": "text", "content": "下个月的渠道会安排在湖南，报名截止到月底。", "level": "L1", "types": ["address"], "note": "公开语料 weibo_ner/dev 抽样（LOC=湖南），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}
+{"id": "STRESS-200", "format": "text", "content": "同事赵新民昨天赶过来，会议上提了下季度的采购预算。（记录 453）", "level": "L1", "types": ["name"], "note": "公开语料 weibo_ner/dev 抽样（PER=赵新民），L1 规则抓不到、靠 NER", "source": "weibo_ner/dev"}

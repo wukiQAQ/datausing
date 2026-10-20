@@ -1,21 +1,23 @@
-"""可复现地构建评测集：69 条人工策展样本 + 程序生成的边界样本 + 公开语料压力集。
+"""可复现地构建评测集：75 条人工策展样本 + 程序生成样本（补齐到 300 条）+ 公开语料压力集。
 
 为什么要有这个脚本：
-- 只有 75 条自建样本时，"98.7%"容易被问"是不是自己出题自己考"；把每一行的
+- 只靠自建样本时，"98.7%"容易被问"是不是自己出题自己考"；把每一行的
   生成规则、标签来源写进脚本，评委可以抽任意一行复算。
 - 生成样本刻意与训练集（`l2_training` 的模板）用**不同的句式、键名和取值**，
   并在 `--check-overlap` 里报出与训练集的重复率，避免训练/评测泄漏。
+- `--stats` 输出级别分布与**类别支持数**，避免"某类只有 3 条"却宣称该类效果好。
 
 用法（在 `server/` 下）::
 
-    python eval/build_dataset.py                    # 重建 eval/dataset.jsonl（幂等）
+    python eval/build_dataset.py                    # 重建 eval/dataset.jsonl（300 条，幂等）
+    python eval/build_dataset.py --stats            # 只看现有数据集画像（级别/类别支持数/格式）
     python eval/build_dataset.py --check-overlap    # 只报告与训练集的重复情况
-    python eval/build_dataset.py --stress            # 额外拉 weibo NER 构造压力集
+    python eval/build_dataset.py --stress            # 额外拉 weibo NER 构造压力集（200 条）
     python eval/build_dataset.py --stress-only
 
 产物：
-- `eval/dataset.jsonl`：主评测集（策展 + 生成，约 160 条）
-- `eval/ner_stress.jsonl`：自由文本压力集（公开语料 weibo_ner 抽样，40 条）
+- `eval/dataset.jsonl`：主评测集（策展 75 + 生成 225 = 300 条）
+- `eval/ner_stress.jsonl`：自由文本压力集（公开语料 weibo_ner 抽样，200 条）
 """
 
 from __future__ import annotations
@@ -231,6 +233,173 @@ def generate_rows(seed: int = 2026) -> list[dict]:
     return rows
 
 
+# ---------------------------------------------------------------- 扩充样本（补齐到 300 条）
+
+# 主评测集的目标规模（含 75 条策展行）：L3 90 / L2 80 / L1 60 / SAFE 70 = 300
+GEN_TARGETS = {"L3": 90, "L2": 80, "L1": 60, "SAFE": 70}
+
+SAFE_TEXTS = (
+    "接口文档示例：手机号 13800000000、身份证 110101199001011234 均为占位数据，请勿用于生产。",
+    "单元测试断言：assert phone == '13900000000'  # 测试数据，非真实用户",
+    "压测脚本使用假号码 13012345678 与虚构地址，仅用于联调。",
+    "日志：GET /api/v1/health HTTP/1.1 200 12ms agent=probe",
+    "缓存键 user:profile:123456 命中，TTL 300s",
+    "订单号 2026102000000123 已创建，支付金额 199.00 元。",
+    '示例 JSON：{"phone": "<PHONE>", "id_card": "<ID_CARD>"} 为模板占位符。',
+    "版本号 3.12.10，构建时间 2026-10-20T13:00:00Z，commit abcdef1。",
+    "监控指标 pps=1234 bps=5678900 conns=88 drop_rate=0.0001",
+    "随机串 x7Kp2Lm9Qa 与 UUID 550e8400-e29b-41d4-a716-446655440000 都不是密钥。",
+    "示例银行卡 4111 1111 1111 1111 来自公开测试卡号，Luhn 校验通过但不可用。",
+    "身份证格式说明：前 6 位是地址码，中间 8 位是出生日期，最后 1 位是校验位。",
+    "样例数据表：姓名=张三（虚构），手机=13800138000（已脱敏练习用）。",
+    '测试用例期望 L3，输入为 "客户张三，身份证 " + MOCK_ID_CARD 常量。',
+    "演示环境单号 DEMO-2026-0001，客服电话 400-000-0000（官方热线）。",
+)
+SAFE_SUFFIXES = ("", "（工单 {no}）", "（文档片段 {no}）", "（示例编号 {no}）", "（测试记录 {no}）")
+
+
+def _l3_family(rng: random.Random, i: int) -> tuple[str, list[EntityType], str, str]:
+    """L3 家族：证件 / 银行卡 / 密钥，模板轮换。"""
+    family = i % 5
+    if family == 0:
+        return (
+            f"报销单：{rng.choice(NAMES)}，身份证 {make_id_card(rng)}，联系电话 {make_phone(rng)}，请尽快处理。",
+            [EntityType.ID_CARD, EntityType.PHONE, EntityType.NAME],
+            "text",
+            "身份证直达 L3（扩充）",
+        )
+    if family == 1:
+        content = json.dumps(
+            {"holder": rng.choice(NAMES), "card_no": make_bank_card(rng), "phone": make_phone(rng)},
+            ensure_ascii=False,
+        )
+        return content, [EntityType.BANK_CARD, EntityType.PHONE, EntityType.NAME], "json", "JSON 银行卡 Luhn 有效（扩充）"
+    if family == 2:
+        key = "sk-" + "".join(rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(24))
+        content = f"GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer {key}\r\n\r\n"
+        return content, [EntityType.SECRET], "text", "HTTP 头里的 API Key（扩充）"
+    if family == 3:
+        content = (
+            f"update users set password='{rng.choice(['P@ssw0rd', 'Abc123456', 'Qwer!2345'])}', "
+            f"api_key='{make_id_card(rng)[:16]}' where uid={rng.randint(1000, 9999)};"
+        )
+        return content, [EntityType.SECRET], "sql", "SQL 里的密钥字面量（扩充）"
+    content = f"姓名：{rng.choice(NAMES)}\n证件类型：居民身份证\n证件号码：{make_id_card(rng)}\n开户行：示例银行"
+    return content, [EntityType.ID_CARD, EntityType.NAME], "text", "多行表单里的身份证（扩充）"
+
+
+def _l2_family(rng: random.Random, i: int) -> tuple[str, list[EntityType], str, str]:
+    """L2 家族：手机+地址 / 邮箱+地址 / 医疗+姓名 / 仅手机。"""
+    family = i % 4
+    if family == 0:
+        content = f"订单联系人电话：{make_phone(rng)}，配送地址 {rng.choice(CITIES)}，请上午送达。"
+        return content, [EntityType.PHONE, EntityType.ADDRESS], "text", "手机+地址共现 L2（扩充）"
+    if family == 1:
+        content = f"email={make_email(rng)}&address={rng.choice(CITIES)}&user_id={rng.randint(10000, 99999)}"
+        return content, [EntityType.EMAIL, EntityType.ADDRESS], "text", "表单邮箱+地址（扩充）"
+    if family == 2:
+        content = f"患者 {rng.choice(NAMES)}，诊断：{rng.choice(MEDICAL)}，复诊医院：{rng.choice(HOSPITALS)}。"
+        return content, [EntityType.MEDICAL, EntityType.NAME], "text", "医疗字段 + 姓名（扩充）"
+    content = f"紧急联系人：{make_phone(rng)}（工位 {rng.randint(100, 999)}）"
+    return content, [EntityType.PHONE], "text", "只有手机号（扩充）"
+
+
+def _l1_family(rng: random.Random, i: int) -> tuple[str, list[EntityType], str, str]:
+    """L1 家族：仅邮箱 / 仅姓名 / 仅地址 / 工单处理人。"""
+    family = i % 4
+    if family == 0:
+        return f"抄送邮箱：{make_email(rng)}", [EntityType.EMAIL], "text", "仅邮箱（扩充）"
+    if family == 1:
+        return f"客户姓名：{rng.choice(NAMES)}，请客服核实后回访。", [EntityType.NAME], "text", "仅姓名字段（扩充）"
+    if family == 2:
+        return f"收货地址：{rng.choice(CITIES)}；备注：货到付款。", [EntityType.ADDRESS], "text", "仅地址字段（扩充）"
+    # 姓名必须带规则认得的键（姓名/名字/客户名/name）；裸叙述里的人名交给 NER，L1 本来抓不到
+    return f"联系人姓名：{rng.choice(NAMES)}，请客服核实后回访。", [EntityType.NAME], "text", "联系人姓名字段（扩充）"
+
+
+def _safe_family(rng: random.Random, i: int) -> tuple[str, list[EntityType], str, str]:
+    """SAFE 家族：示例/占位/日志等困难负例，用编号后缀保证内容唯一。"""
+    base = SAFE_TEXTS[i % len(SAFE_TEXTS)]
+    suffix = SAFE_SUFFIXES[(i // len(SAFE_TEXTS)) % len(SAFE_SUFFIXES)]
+    text = base + (suffix.format(no=rng.randint(100, 999)) if suffix else f"（测试记录 {rng.randint(100, 999)}）")
+    return text, [], "text", "困难负例（示例/占位/无关数字，扩充）"
+
+
+EXTRA_FAMILIES = {"L3": _l3_family, "L2": _l2_family, "L1": _l1_family, "SAFE": _safe_family}
+
+
+def generate_extra_rows(deficit: dict[str, int], *, seed: int = 2026, start_idx: int = 0) -> list[dict]:
+    """按级别缺口生成样本；模板折算出的级别与目标级别不一致时跳过，避免金标漂移。"""
+    rng = random.Random(seed)
+    rows: list[dict] = []
+    for level, want in deficit.items():
+        if want <= 0:
+            continue
+        family = EXTRA_FAMILIES[level]
+        made = 0
+        attempt = 0
+        while made < want and attempt < want * 30:
+            content, entities, fmt, note = family(rng, attempt)
+            attempt += 1
+            gold, types = gold_level(entities)
+            if gold != level:
+                continue
+            rows.append(
+                {
+                    "id": f"{GEN_PREFIX}{start_idx + len(rows) + 1:03d}",
+                    "format": fmt,
+                    "content": content,
+                    "level": gold,
+                    "types": types,
+                    "note": note,
+                    "source": "generated",
+                }
+            )
+            made += 1
+        if made < want:
+            raise SystemExit(f"生成 {level} 样本不足：{made}/{want}，请检查 EXTRA_FAMILIES 模板")
+    return rows
+
+
+def dataset_stats(rows: list[dict]) -> dict:
+    """数据集画像：级别分布、类别支持数、格式分布、唯一性、来源。"""
+    levels = ("L3", "L2", "L1", "SAFE")
+    by_level = {level: 0 for level in levels}
+    by_type: dict[str, int] = {}
+    by_format: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    for row in rows:
+        by_level[row["level"]] = by_level.get(row["level"], 0) + 1
+        for typ in row["types"]:
+            by_type[typ] = by_type.get(typ, 0) + 1
+        by_format[row.get("format", "text")] = by_format.get(row.get("format", "text"), 0) + 1
+        source = str(row.get("source") or "curated")
+        by_source[source] = by_source.get(source, 0) + 1
+    return {
+        "total": len(rows),
+        "by_level": by_level,
+        "by_type": dict(sorted(by_type.items(), key=lambda item: -item[1])),
+        "by_format": dict(sorted(by_format.items(), key=lambda item: -item[1])),
+        "by_source": dict(sorted(by_source.items(), key=lambda item: -item[1])),
+        "unique_ids": len({row["id"] for row in rows}),
+        "unique_contents": len({_digest(row["content"]) for row in rows}),
+    }
+
+
+def render_stats(stats: dict) -> str:
+    """把画像渲染成 markdown 表，便于贴进文档与提交说明。"""
+    lines = [
+        "| 维度 | 分布 |",
+        "| --- | --- |",
+        f"| 总量 | {stats['total']} 条（唯一 id {stats['unique_ids']} / 唯一内容 {stats['unique_contents']}） |",
+        f"| 级别 | {' / '.join(f'{k} {v}' for k, v in stats['by_level'].items())} |",
+        f"| 格式 | {' / '.join(f'{k} {v}' for k, v in stats['by_format'].items())} |",
+        f"| 来源 | {' / '.join(f'{k} {v}' for k, v in stats['by_source'].items())} |",
+        f"| 类别支持数 | {' / '.join(f'{k} {v}' for k, v in stats['by_type'].items())} |",
+    ]
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- 压力集（公开语料）
 
 GENERIC_NAMES = frozenset((
@@ -251,16 +420,24 @@ TEMPLATES_BOTH = (
     "同事{name}昨天从{loc}赶过来，会议上提了下季度的采购预算。",
     "客户{name}反馈：仓库位于{loc}，本周五前需要补货。",
     "{name}在{loc}参加培训，回程车票已改签到周日。",
+    "上周{name}去{loc}出差，回来后整理了对接材料。",
+    "供应商{name}把样品寄到了{loc}的仓库，请安排验收。",
 )
 TEMPLATES_NAME = (
     "同事{name}昨天赶过来，会议上提了下季度的采购预算。",
     "这份材料由{name}整理，周五前要发出去。",
     "{name}反馈仓库这周需要补货，回程车票已改签到周日。",
+    "{name}刚提交了离职申请，交接清单还在整理。",
+    "评审意见里提到要请{name}补充一下预算说明。",
 )
 TEMPLATES_LOC = (
     "本周巡检覆盖{loc}，未发现异常。",
     "仓库位于{loc}，本周五前需要补货。",
+    "下个月的渠道会安排在{loc}，报名截止到月底。",
+    "现场照片是在{loc}拍的，已上传到共享盘。",
+    "设备清单里有一批在{loc}等待调拨。",
 )
+STRESS_SUFFIXES = ("（记录 {no}）", "（工单 {no}）", "（附件 {no}）")
 
 
 def _stress_row(text: str, entities: list[EntityType], *, note: str) -> dict:
@@ -277,21 +454,37 @@ def _stress_row(text: str, entities: list[EntityType], *, note: str) -> dict:
     }
 
 
-def build_stress_rows(*, cache: Path, count: int = 40, seed: int = 2026) -> list[dict]:
+def build_stress_rows(*, cache: Path, count: int = 200, seed: int = 2026) -> list[dict]:
     """从 weibo NER dev 集抽人名/地点，包成叙述句，金标为 name/address（L1）。
 
     取舍：
     - 公开语料只取实体（PER/LOC/GPE），模板与上下文是自己加的，因此级别按本项目评分模型折算；
-    - 优先“人名 + 地点都有的句子”，不够时再用只含人名 / 只含地点的句子；
+    - 每句尽量多取几个实体，铺满 200 条（人名+地点 > 仅人名 > 仅地点）；
+    - 内容重复时追加「（记录/工单/附件 N）」后缀，保证每条内容唯一；
     - 过滤「老百姓 / 妹子 / 网友」这类语料标注噪声（weibo 把泛称也标了 PER）。
     """
     if not cache.is_file():
         raise SystemExit(
             f"缺少公开语料缓存：{cache}\n"
-            "下载命令：curl.exe -s -L -o eval/_weibo_ner_dev.json "
-            "https://hf-mirror.com/datasets/Aunderline/weibo_ner/resolve/main/dev.json"
+            "下载命令（dev + train 两片，合并后句子更多）：\n"
+            "  curl.exe -s -L -o eval/_weibo_ner_dev.json "
+            "https://hf-mirror.com/datasets/Aunderline/weibo_ner/resolve/main/dev.json\n"
+            "  curl.exe -s -L -o eval/_weibo_ner_train.json "
+            "https://hf-mirror.com/datasets/Aunderline/weibo_ner/resolve/main/train.json"
         )
-    raw = json.loads(cache.read_text(encoding="utf-8"))
+    # 合并同目录下的其他公开语料分片（_weibo_ner_*.json），扩样到 200 条需要更多句子
+    sources = [cache]
+    sources.extend(sorted(path for path in cache.parent.glob("_weibo_ner_*.json") if path != cache))
+    raw: list[dict] = []
+    for source in sources:
+        if not source.is_file():
+            continue
+        try:
+            part = json.loads(source.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        if isinstance(part, list):
+            raw.extend(part)
     rng = random.Random(seed)
 
     def mentions(sentence: dict, prefixes: tuple[str, ...]) -> list[str]:
@@ -327,21 +520,44 @@ def build_stress_rows(*, cache: Path, count: int = 40, seed: int = 2026) -> list
     for sentence in raw:
         pers = [name for name in mentions(sentence, ("PER",)) if clean_name(name)]
         locs = [place for place in mentions(sentence, ("LOC", "GPE")) if 2 <= len(place) <= 12]
-        if pers and locs:
-            text = TEMPLATES_BOTH[len(both) % len(TEMPLATES_BOTH)].format(name=pers[0], loc=locs[0])
-            both.append(_stress_row(text, [EntityType.NAME, EntityType.ADDRESS], note=f"PER={pers[0]}, LOC={locs[0]}"))
-        elif pers:
-            text = TEMPLATES_NAME[len(only_name) % len(TEMPLATES_NAME)].format(name=pers[0])
-            only_name.append(_stress_row(text, [EntityType.NAME], note=f"PER={pers[0]}"))
-        elif locs:
-            text = TEMPLATES_LOC[len(only_loc) % len(TEMPLATES_LOC)].format(loc=locs[0])
-            only_loc.append(_stress_row(text, [EntityType.ADDRESS], note=f"LOC={locs[0]}"))
+        for order, name in enumerate(pers[:2]):
+            if locs:
+                template = TEMPLATES_BOTH[len(both) % len(TEMPLATES_BOTH)]
+                text = template.format(name=name, loc=locs[order % len(locs)])
+                both.append(
+                    _stress_row(text, [EntityType.NAME, EntityType.ADDRESS], note=f"PER={name}, LOC={locs[order % len(locs)]}")
+                )
+            else:
+                text = TEMPLATES_NAME[len(only_name) % len(TEMPLATES_NAME)].format(name=name)
+                only_name.append(_stress_row(text, [EntityType.NAME], note=f"PER={name}"))
+        if not pers:
+            for order, loc in enumerate(locs[:2]):
+                text = TEMPLATES_LOC[len(only_loc) % len(TEMPLATES_LOC)].format(loc=loc)
+                only_loc.append(_stress_row(text, [EntityType.ADDRESS], note=f"LOC={loc}"))
 
-    rows = both + only_name + only_loc
-    if not rows:
+    candidates = both + only_name + only_loc
+    if not candidates:
         raise SystemExit("weibo_ner 里没抽到可用的人名/地点")
-    rng.shuffle(rows)
-    rows = rows[:count]
+    rng.shuffle(candidates)
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for row in candidates:
+        if len(rows) >= count:
+            break
+        text = row["content"]
+        attempt = 0
+        while text in seen and attempt < 200:
+            suffix = STRESS_SUFFIXES[attempt % len(STRESS_SUFFIXES)].format(no=rng.randint(100, 999))
+            text = f"{row['content']}{suffix}"
+            attempt += 1
+        if text in seen:
+            continue
+        seen.add(text)
+        row["content"] = text
+        rows.append(row)
+    if len(rows) < count:
+        raise SystemExit(f"weibo_ner 可用样本不足：{len(rows)}/{count}，请放宽过滤或补充语料")
     for order, row in enumerate(rows, start=1):
         row["id"] = f"{STRESS_PREFIX}{order:03d}"
     return rows
@@ -396,38 +612,57 @@ def _dedupe_ids(rows: list[dict]) -> list[dict]:
 
 
 def build_dataset(*, keep_curated: bool = True, seed: int = 2026) -> tuple[list[dict], dict]:
+    """构建主评测集：策展行 + 基础生成 90 条 + 按缺口补齐到 GEN_TARGETS（合计 300 条）。"""
     existing = load_jsonl(DATASET)
     curated = [row for row in existing if str(row.get("id", "")).startswith(CURATED_PREFIXES)]
     if not keep_curated:
         curated = []
-    generated = generate_rows(seed=seed)
-    rows = curated + generated
+
     seen: set[str] = set()
-    deduped: list[dict] = []
-    for row in rows:
-        digest = _digest(row["content"])
-        if digest in seen:
-            continue
-        seen.add(digest)
-        deduped.append(row)
-    deduped = _dedupe_ids(deduped)
-    stats = {
-        "total": len(deduped),
-        "curated": len(curated),
-        "generated": len(deduped) - len(curated),
-        "by_level": {},
-        "by_type": {},
-    }
-    for row in deduped:
-        stats["by_level"][row["level"]] = stats["by_level"].get(row["level"], 0) + 1
-        for typ in row["types"]:
-            stats["by_type"][typ] = stats["by_type"].get(typ, 0) + 1
-    return deduped, stats
+    rows: list[dict] = []
+
+    def _add(new_rows: list[dict]) -> int:
+        added = 0
+        for row in new_rows:
+            digest = _digest(row["content"])
+            if digest in seen:
+                continue
+            seen.add(digest)
+            rows.append(row)
+            added += 1
+        return added
+
+    _add(curated)
+    _add(generate_rows(seed=seed))
+
+    # 按级别缺口补齐：每轮重新算缺口，最多 8 轮（模板级别与评分口径不符时会跳过）
+    for attempt in range(8):
+        counts = {level: 0 for level in GEN_TARGETS}
+        for row in rows:
+            counts[row["level"]] = counts.get(row["level"], 0) + 1
+        deficit = {level: target - counts.get(level, 0) for level, target in GEN_TARGETS.items() if target > counts.get(level, 0)}
+        if not deficit:
+            break
+        _add(generate_extra_rows(deficit, seed=seed + attempt, start_idx=len(rows)))
+    else:
+        counts = {level: 0 for level in GEN_TARGETS}
+        for row in rows:
+            counts[row["level"]] = counts.get(row["level"], 0) + 1
+        missing = {level: target - counts.get(level, 0) for level, target in GEN_TARGETS.items() if target > counts.get(level, 0)}
+        if missing:
+            raise SystemExit(f"评测集未补齐到目标规模，缺：{missing}")
+
+    rows = _dedupe_ids(rows)
+    stats = dataset_stats(rows)
+    stats["curated"] = sum(1 for row in rows if str(row.get("id", "")).startswith(CURATED_PREFIXES))
+    stats["generated"] = stats["total"] - stats["curated"]
+    return rows, stats
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="重建评测集（可复现）")
     parser.add_argument("--check-overlap", action="store_true", help="只报告与 L2 训练集的重复情况")
+    parser.add_argument("--stats", action="store_true", help="只打印现有数据集的画像（级别/类别支持数/格式）")
     parser.add_argument("--stress", action="store_true", help="额外构造公开语料压力集")
     parser.add_argument("--stress-only", action="store_true", help="只重建压力集")
     parser.add_argument("--seed", type=int, default=2026)
@@ -436,12 +671,18 @@ def main(argv: list[str] | None = None) -> int:
 
     training = SERVER_DIR / "data" / "l2_training.jsonl"
 
+    if args.stats:
+        rows = load_jsonl(DATASET)
+        if not rows:
+            raise SystemExit(f"数据集不存在：{DATASET}")
+        print(render_stats(dataset_stats(rows)))
+        return 0
+
     if not args.stress_only:
         rows, stats = build_dataset(seed=args.seed)
         write_jsonl(DATASET, rows)
         print(f"[dataset] 写入 {DATASET}：{stats['total']} 条（策展 {stats['curated']} + 生成 {stats['generated']}）")
-        print(f"  级别分布：{json.dumps(stats['by_level'], ensure_ascii=False)}")
-        print(f"  类型计数：{json.dumps(stats['by_type'], ensure_ascii=False)}")
+        print(render_stats(stats))
         if training.is_file():
             overlap, total = count_overlap(rows, training)
             print(f"[leak] 与训练集({training.name})内容完全相同的行：{overlap}/{total}（{overlap / total:.1%}）")
@@ -455,6 +696,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = build_stress_rows(cache=cache)
         write_jsonl(STRESS, rows)
         print(f"[stress] 写入 {STRESS}：{len(rows)} 条（公开语料 weibo_ner/dev 抽样）")
+        print(render_stats(dataset_stats(rows)))
         print("  示例：" + json.dumps(rows[0], ensure_ascii=False))
 
     print(f"done at {datetime.now(timezone.utc).isoformat(timespec='seconds')}")

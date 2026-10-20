@@ -1,4 +1,4 @@
-﻿"""评测集自身的完整性测试：数据集是"考卷"，考卷本身不能有错题号、错级别。
+"""评测集自身的完整性测试：数据集是"考卷"，考卷本身不能有错题号、错级别。
 
 这些用例不依赖任何模型权重，只校验 `eval/*.jsonl` 的结构与标注口径，
 避免以后有人手改数据集时把重复 id、错误级别或训练集泄漏带进来。
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from app.identify.types import EntityType
-from eval.build_dataset import _dedupe_ids, count_overlap, gold_level
+from eval.build_dataset import _dedupe_ids, count_overlap, dataset_stats, gold_level, render_stats
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 DATASET = SERVER_DIR / "eval" / "dataset.jsonl"
@@ -40,11 +40,11 @@ def stress() -> list[dict]:
 
 
 def test_dataset_shape(dataset: list[dict]) -> None:
-    """规模与来源构成：策展 75 条 + 生成 90 条 = 165 条。"""
-    assert len(dataset) == 165
+    """规模与来源构成：策展 75 条 + 生成 225 条 = 300 条。"""
+    assert len(dataset) == 300
     curated = [row for row in dataset if not row.get("source")]
     generated = [row for row in dataset if row.get("source") == "generated"]
-    assert (len(curated), len(generated)) == (75, 90)
+    assert (len(curated), len(generated)) == (75, 225)
 
 
 def test_ids_are_unique(dataset: list[dict], stress: list[dict]) -> None:
@@ -91,14 +91,14 @@ def test_no_training_leakage(dataset: list[dict]) -> None:
 
 def test_stress_set_targets_ner_only(stress: list[dict]) -> None:
     """压力集是"规则抓不到、只能靠 NER"的自由文本，因此全部标 L1 且只含姓名/地址。"""
-    assert len(stress) == 40
+    assert len(stress) == 200
     for row in stress:
         assert row["level"] == "L1", row["id"]
         assert set(row["types"]) <= {"name", "address"}, (row["id"], row["types"])
         assert "weibo_ner" in row.get("source", "")
         assert "公开语料" in row.get("note", "")
-    assert sum("name" in row["types"] for row in stress) >= 20
-    assert sum("address" in row["types"] for row in stress) >= 15
+    assert sum("name" in row["types"] for row in stress) >= 100
+    assert sum("address" in row["types"] for row in stress) >= 60
 
 
 def test_dedupe_ids_renumbers_collisions() -> None:
@@ -129,7 +129,19 @@ def test_every_level_and_core_type_is_covered(dataset: list[dict]) -> None:
 
 
 def test_level_distribution_is_reasonable(dataset: list[dict]) -> None:
-    """四级都不少于 20 条，避免某一级样本太少让指标失真。"""
+    """扩到 300 条后，每一级都不少于 60 条，避免某一级样本太少让指标失真。"""
     for level in LEVEL_NAMES:
         count = sum(1 for row in dataset if row["level"] == level)
-        assert count >= 20, f"{level} 只有 {count} 条"
+        assert count >= 60, f"{level} 只有 {count} 条"
+
+
+def test_type_support_is_reported_and_sufficient(dataset: list[dict]) -> None:
+    """类别支持数：核心类别每个至少 15 条，且 dataset_stats 的口径与逐行统计一致。"""
+    stats = dataset_stats(dataset)
+    for level, count in stats["by_level"].items():
+        assert count == sum(1 for row in dataset if row["level"] == level), level
+    core = {"id_card", "phone", "bank_card", "email", "name", "address", "secret"}
+    thin = {typ: stats["by_type"].get(typ, 0) for typ in core if stats["by_type"].get(typ, 0) < 15}
+    assert not thin, f"以下核心类别支持数不足 15：{thin}"
+    table = render_stats(stats)
+    assert "类别支持数" in table and "唯一 id 300" in table

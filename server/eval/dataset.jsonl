@@ -163,3 +163,138 @@
 {"id": "GEN-091", "format": "text", "content": "样例数据表：姓名=张三（虚构），手机=13800138000（已脱敏练习用）。", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字）", "source": "generated"}
 {"id": "GEN-092", "format": "text", "content": "测试用例期望 L3，输入为 \"客户张三，身份证 \" + MOCK_ID_CARD 常量。", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字）", "source": "generated"}
 {"id": "GEN-093", "format": "text", "content": "演示环境单号 DEMO-2026-0001，客服电话 400-000-0000（官方热线）。", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字）", "source": "generated"}
+{"id": "GEN-167", "format": "json", "content": "{\"holder\": \"许杰\", \"card_no\": \"6217003091141705\", \"phone\": \"15775364556\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-168", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-EXFUU7KVBZZ75F39H593S48B\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-169", "format": "sql", "content": "update users set password='Qwer!2345', api_key='3201021968012353' where uid=2680;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-170", "format": "text", "content": "姓名：曹颖\n证件类型：居民身份证\n证件号码：510107198708054933\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-171", "format": "text", "content": "报销单：孙浩，身份证 110101200012156904，联系电话 15084864887，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-172", "format": "json", "content": "{\"holder\": \"郑爽\", \"card_no\": \"6217003440029783\", \"phone\": \"15053477876\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-173", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-CUW7G6S6M58ET9ZGN4K6AFA6\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-174", "format": "sql", "content": "update users set password='Qwer!2345', api_key='5101071965102620' where uid=5060;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-175", "format": "text", "content": "姓名：王磊\n证件类型：居民身份证\n证件号码：510107196209096849\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-176", "format": "text", "content": "报销单：邓超，身份证 440304196901116803，联系电话 18697283792，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-177", "format": "json", "content": "{\"holder\": \"许杰\", \"card_no\": \"6228481622948664\", \"phone\": \"13983601610\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-178", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-YYBB8WV6WH97LKP5X7QE3CNM\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-179", "format": "sql", "content": "update users set password='P@ssw0rd', api_key='5101071963082877' where uid=4088;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-180", "format": "text", "content": "姓名：冯宇\n证件类型：居民身份证\n证件号码：110101196811172231\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-181", "format": "text", "content": "报销单：何静，身份证 320102197011281907，联系电话 15046861642，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-182", "format": "json", "content": "{\"holder\": \"吴迪\", \"card_no\": \"6212264776472584\", \"phone\": \"15071884133\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-183", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-AF7X4MBYLYPHTPUTJGSG5LGD\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-184", "format": "sql", "content": "update users set password='Abc123456', api_key='3201022001110451' where uid=6137;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-185", "format": "text", "content": "姓名：周婷\n证件类型：居民身份证\n证件号码：510107196405111655\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-186", "format": "text", "content": "报销单：周婷，身份证 440304196401148876，联系电话 13760013041，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-187", "format": "json", "content": "{\"holder\": \"王磊\", \"card_no\": \"6228485799065939\", \"phone\": \"18676158464\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-188", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-YD5BUXUHV4WBXNDHLHHCJYVB\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-189", "format": "sql", "content": "update users set password='Abc123456', api_key='5101071968061439' where uid=7179;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-190", "format": "text", "content": "姓名：孙浩\n证件类型：居民身份证\n证件号码：350102200204251288\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-191", "format": "text", "content": "报销单：赵敏，身份证 510107196111239573，联系电话 18686423004，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-192", "format": "json", "content": "{\"holder\": \"何静\", \"card_no\": \"6217006452912804\", \"phone\": \"15784585003\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-193", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-8DQK3ZQTXNZY778VNL4K9AY4\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-194", "format": "sql", "content": "update users set password='P@ssw0rd', api_key='3201021965051255' where uid=5342;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-195", "format": "text", "content": "姓名：赵敏\n证件类型：居民身份证\n证件号码：110101196109078704\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-196", "format": "text", "content": "报销单：曹颖，身份证 510107197910029788，联系电话 15068828112，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-197", "format": "json", "content": "{\"holder\": \"曹颖\", \"card_no\": \"6217005844093240\", \"phone\": \"13784526309\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-198", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-85YLBMWKLBHAZEZVPKRJGW9G\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-199", "format": "sql", "content": "update users set password='Qwer!2345', api_key='1101011984052030' where uid=2925;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-200", "format": "text", "content": "姓名：吴迪\n证件类型：居民身份证\n证件号码：350102199102185317\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-201", "format": "text", "content": "报销单：孙浩，身份证 440304200308193532，联系电话 13811744325，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-202", "format": "json", "content": "{\"holder\": \"郑爽\", \"card_no\": \"6228485765237355\", \"phone\": \"13769632792\"}", "level": "L3", "types": ["bank_card", "phone", "name"], "note": "JSON 银行卡 Luhn 有效（扩充）", "source": "generated"}
+{"id": "GEN-203", "format": "text", "content": "GET /v2/export HTTP/1.1\r\nHost: api.example.net\r\nAuthorization: Bearer sk-5TXHWT6SKTQXKHTU733BX4XG\r\n\r\n", "level": "L3", "types": ["secret"], "note": "HTTP 头里的 API Key（扩充）", "source": "generated"}
+{"id": "GEN-204", "format": "sql", "content": "update users set password='Qwer!2345', api_key='3501022003112768' where uid=9952;", "level": "L3", "types": ["secret"], "note": "SQL 里的密钥字面量（扩充）", "source": "generated"}
+{"id": "GEN-205", "format": "text", "content": "姓名：何静\n证件类型：居民身份证\n证件号码：320102198706213382\n开户行：示例银行", "level": "L3", "types": ["id_card", "name"], "note": "多行表单里的身份证（扩充）", "source": "generated"}
+{"id": "GEN-206", "format": "text", "content": "订单联系人电话：13862048425，配送地址 西安市雁塔区科技路 6 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-207", "format": "text", "content": "email=zhou.ting54@corp.example.cn&address=武汉市洪山区珞喻路 129 号&user_id=54400", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-208", "format": "text", "content": "患者 陈静，诊断：2 型糖尿病，复诊医院：市第一人民医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-209", "format": "text", "content": "紧急联系人：15714503784（工位 737）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-210", "format": "text", "content": "订单联系人电话：15751838012，配送地址 南京市鼓楼区中山北路 200 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-211", "format": "text", "content": "email=wang.lei60@example.com&address=西安市雁塔区科技路 6 号&user_id=98230", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-212", "format": "text", "content": "患者 赵敏，诊断：慢性肾功能不全，复诊医院：市第一人民医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-213", "format": "text", "content": "紧急联系人：18668982104（工位 529）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-214", "format": "text", "content": "订单联系人电话：13828837555，配送地址 南京市鼓楼区中山北路 200 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-215", "format": "text", "content": "email=zhou.ting62@corp.example.cn&address=武汉市洪山区珞喻路 129 号&user_id=52864", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-216", "format": "text", "content": "患者 周婷，诊断：2 型糖尿病，复诊医院：区中医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-217", "format": "text", "content": "紧急联系人：15020754735（工位 380）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-218", "format": "text", "content": "订单联系人电话：18664390618，配送地址 西安市雁塔区科技路 6 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-219", "format": "text", "content": "email=zhao.min62@mail.example.org&address=杭州市西湖区文三路 88 号&user_id=76798", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-220", "format": "text", "content": "患者 何静，诊断：抑郁症复诊，复诊医院：省立医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-221", "format": "text", "content": "紧急联系人：15055521824（工位 992）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-222", "format": "text", "content": "订单联系人电话：18686193073，配送地址 成都市武侯区人民南路 3 段 18 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-223", "format": "text", "content": "email=sun.hao66@mail.example.org&address=成都市武侯区人民南路 3 段 18 号&user_id=77329", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-224", "format": "text", "content": "患者 孙浩，诊断：慢性肾功能不全，复诊医院：区中医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-225", "format": "text", "content": "紧急联系人：15028556898（工位 293）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-226", "format": "text", "content": "订单联系人电话：13998222900，配送地址 南京市鼓楼区中山北路 200 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-227", "format": "text", "content": "email=zhao.min23@example.com&address=南京市鼓楼区中山北路 200 号&user_id=80820", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-228", "format": "text", "content": "患者 曹颖，诊断：慢性肾功能不全，复诊医院：市第一人民医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-229", "format": "text", "content": "紧急联系人：15022022697（工位 659）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-230", "format": "text", "content": "订单联系人电话：13843858176，配送地址 成都市武侯区人民南路 3 段 18 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-231", "format": "text", "content": "email=zhao.min19@mail.example.org&address=西安市雁塔区科技路 6 号&user_id=15278", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-232", "format": "text", "content": "患者 冯宇，诊断：2 型糖尿病，复诊医院：市第一人民医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-233", "format": "text", "content": "紧急联系人：13859450283（工位 989）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-234", "format": "text", "content": "订单联系人电话：13866323373，配送地址 南京市鼓楼区中山北路 200 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-235", "format": "text", "content": "email=wang.lei69@corp.example.cn&address=武汉市洪山区珞喻路 129 号&user_id=70212", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-236", "format": "text", "content": "患者 吴迪，诊断：高血压三级，复诊医院：省立医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-237", "format": "text", "content": "紧急联系人：15778971331（工位 874）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-238", "format": "text", "content": "订单联系人电话：13859212363，配送地址 武汉市洪山区珞喻路 129 号，请上午送达。", "level": "L2", "types": ["phone", "address"], "note": "手机+地址共现 L2（扩充）", "source": "generated"}
+{"id": "GEN-239", "format": "text", "content": "email=chen.jing71@example.com&address=南京市鼓楼区中山北路 200 号&user_id=47632", "level": "L2", "types": ["email", "address"], "note": "表单邮箱+地址（扩充）", "source": "generated"}
+{"id": "GEN-240", "format": "text", "content": "患者 曹颖，诊断：慢性肾功能不全，复诊医院：省立医院。", "level": "L2", "types": ["medical", "name"], "note": "医疗字段 + 姓名（扩充）", "source": "generated"}
+{"id": "GEN-241", "format": "text", "content": "紧急联系人：13878745721（工位 912）", "level": "L2", "types": ["phone"], "note": "只有手机号（扩充）", "source": "generated"}
+{"id": "GEN-242", "format": "text", "content": "抄送邮箱：wang.lei72@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-244", "format": "text", "content": "收货地址：武汉市洪山区珞喻路 129 号；备注：货到付款。", "level": "L1", "types": ["address"], "note": "仅地址字段（扩充）", "source": "generated"}
+{"id": "GEN-245", "format": "text", "content": "联系人姓名：郑爽，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-246", "format": "text", "content": "抄送邮箱：zhou.ting82@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-247", "format": "text", "content": "客户姓名：陈静，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-249", "format": "text", "content": "联系人姓名：吴迪，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-250", "format": "text", "content": "抄送邮箱：zhao.min88@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-254", "format": "text", "content": "抄送邮箱：zhou.ting68@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-255", "format": "text", "content": "客户姓名：王磊，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-257", "format": "text", "content": "联系人姓名：周婷，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-258", "format": "text", "content": "抄送邮箱：chen.jing11@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-261", "format": "text", "content": "联系人姓名：何静，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-262", "format": "text", "content": "抄送邮箱：sun.hao73@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-263", "format": "text", "content": "客户姓名：郑爽，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-265", "format": "text", "content": "联系人姓名：冯宇，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-266", "format": "text", "content": "抄送邮箱：zhou.ting62@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-270", "format": "text", "content": "抄送邮箱：wang.lei4@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-273", "format": "text", "content": "联系人姓名：赵敏，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-274", "format": "text", "content": "抄送邮箱：zhou.ting33@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-276", "format": "text", "content": "接口文档示例：手机号 13800000000、身份证 110101199001011234 均为占位数据，请勿用于生产。（测试记录 866）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-277", "format": "text", "content": "单元测试断言：assert phone == '13900000000'  # 测试数据，非真实用户（测试记录 172）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-278", "format": "text", "content": "压测脚本使用假号码 13012345678 与虚构地址，仅用于联调。（测试记录 870）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-279", "format": "text", "content": "日志：GET /api/v1/health HTTP/1.1 200 12ms agent=probe（测试记录 716）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-280", "format": "text", "content": "缓存键 user:profile:123456 命中，TTL 300s（测试记录 633）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-281", "format": "text", "content": "订单号 2026102000000123 已创建，支付金额 199.00 元。（测试记录 222）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-282", "format": "text", "content": "示例 JSON：{\"phone\": \"<PHONE>\", \"id_card\": \"<ID_CARD>\"} 为模板占位符。（测试记录 850）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-283", "format": "text", "content": "版本号 3.12.10，构建时间 2026-10-20T13:00:00Z，commit abcdef1。（测试记录 977）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-284", "format": "text", "content": "监控指标 pps=1234 bps=5678900 conns=88 drop_rate=0.0001（测试记录 442）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-285", "format": "text", "content": "随机串 x7Kp2Lm9Qa 与 UUID 550e8400-e29b-41d4-a716-446655440000 都不是密钥。（测试记录 834）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-286", "format": "text", "content": "示例银行卡 4111 1111 1111 1111 来自公开测试卡号，Luhn 校验通过但不可用。（测试记录 256）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-287", "format": "text", "content": "身份证格式说明：前 6 位是地址码，中间 8 位是出生日期，最后 1 位是校验位。（测试记录 414）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-288", "format": "text", "content": "样例数据表：姓名=张三（虚构），手机=13800138000（已脱敏练习用）。（测试记录 582）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-289", "format": "text", "content": "测试用例期望 L3，输入为 \"客户张三，身份证 \" + MOCK_ID_CARD 常量。（测试记录 347）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-290", "format": "text", "content": "演示环境单号 DEMO-2026-0001，客服电话 400-000-0000（官方热线）。（测试记录 429）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-291", "format": "text", "content": "接口文档示例：手机号 13800000000、身份证 110101199001011234 均为占位数据，请勿用于生产。（工单 834）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-292", "format": "text", "content": "单元测试断言：assert phone == '13900000000'  # 测试数据，非真实用户（工单 579）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-293", "format": "text", "content": "压测脚本使用假号码 13012345678 与虚构地址，仅用于联调。（工单 807）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-294", "format": "text", "content": "日志：GET /api/v1/health HTTP/1.1 200 12ms agent=probe（工单 348）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-295", "format": "text", "content": "缓存键 user:profile:123456 命中，TTL 300s（工单 509）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-296", "format": "text", "content": "订单号 2026102000000123 已创建，支付金额 199.00 元。（工单 344）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-297", "format": "text", "content": "示例 JSON：{\"phone\": \"<PHONE>\", \"id_card\": \"<ID_CARD>\"} 为模板占位符。（工单 626）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-298", "format": "text", "content": "版本号 3.12.10，构建时间 2026-10-20T13:00:00Z，commit abcdef1。（工单 981）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-299", "format": "text", "content": "监控指标 pps=1234 bps=5678900 conns=88 drop_rate=0.0001（工单 968）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-300", "format": "text", "content": "随机串 x7Kp2Lm9Qa 与 UUID 550e8400-e29b-41d4-a716-446655440000 都不是密钥。（工单 420）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
+{"id": "GEN-301", "format": "text", "content": "报销单：王磊，身份证 35010219650121330X，联系电话 15026259244，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-302", "format": "text", "content": "抄送邮箱：zhou.ting10@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-303", "format": "text", "content": "抄送邮箱：chen.jing33@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-304", "format": "text", "content": "客户姓名：周婷，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-305", "format": "text", "content": "抄送邮箱：wang.lei21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-306", "format": "text", "content": "联系人姓名：孙浩，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-307", "format": "text", "content": "抄送邮箱：sun.hao59@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-308", "format": "text", "content": "客户姓名：赵敏，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-309", "format": "text", "content": "抄送邮箱：zhao.min23@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-310", "format": "text", "content": "抄送邮箱：zhao.min21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-311", "format": "text", "content": "抄送邮箱：sun.hao62@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-312", "format": "text", "content": "客户姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-313", "format": "text", "content": "联系人姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-314", "format": "text", "content": "抄送邮箱：sun.hao67@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-315", "format": "text", "content": "抄送邮箱：zhao.min50@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-316", "format": "text", "content": "客户姓名：何静，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}

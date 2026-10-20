@@ -46,6 +46,14 @@ def test_detect_secret_with_quoted_key() -> None:
     assert hits and hits[0].type == EntityType.SECRET
 
 
+def test_medical_value_allows_inner_space() -> None:
+    """病历里常见「2 型糖尿病」这种带空格的写法，规则要能抓到完整值。"""
+    hits = detect("患者 陈静，诊断：2 型糖尿病，复诊医院：市第一人民医院。")
+    medical = [hit for hit in hits if hit.type is EntityType.MEDICAL]
+    assert medical, "带空格的就诊结论没有命中"
+    assert medical[0].value == "2 型糖尿病"
+
+
 def test_detect_name_kv_uses_group() -> None:
     hits = detect("姓名：张三")
     assert hits and hits[0].type == EntityType.NAME and hits[0].value == "张三"
