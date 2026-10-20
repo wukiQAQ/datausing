@@ -32,10 +32,31 @@
 
 环境：Python 3.11+（本机 3.12.10）。依赖只有 FastAPI 全家桶，存储用标准库 `sqlite3`（无 ORM、无 CGO）。
 
+### 2.1 一键启动（推荐）
+
 ```powershell
 cd server
-pip install -e ".[dev]"        # 或 pip install fastapi uvicorn python-multipart pytest httpx
-python -m pytest -q            # 205 个用例
+pip install -r requirements.txt          # 运行依赖（固定版本）；开发/测试用 requirements-dev.txt
+
+# Windows：双击或命令行都行（内部已用 -ExecutionPolicy Bypass，绕过 PS 执行策略限制）
+scripts\start_local.cmd
+scripts\start_local.cmd -WithL2 -EnableNer        # 叠加 L2 语义模型 + 自由文本 NER
+scripts\start_local.cmd -WithL2 -WithL3 -L3Device cuda
+scripts\stop_local.cmd                            # 停止全部
+
+# Linux / macOS
+./scripts/start_local.sh
+./scripts/start_local.sh --with-l2 --ner
+./scripts/stop_local.sh
+```
+
+脚本会：加载 `.env`（可从 `.env.example` 复制）→ 按开关拉起 L2/L3 → 起主服务 → 等 `/api/v1/health` →
+打印入口并（默认）打开浏览器；pid/日志写在 `server/data/run/`。参数见第 11 章。
+
+### 2.2 手动启动（分步调试用）
+
+```powershell
+python -m pytest -o addopts="" -q    # 218 个用例
 python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
@@ -322,8 +343,13 @@ server/
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（75 条）与评测说明
-  tests/               205 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路、NER 探针
+  tests/               218 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测、流量导入、实时旁路、NER 探针
   pyproject.toml
+  requirements.txt     运行依赖（固定版本）
+  requirements-ml.txt  可选：L2/L3/NER/训练与导出
+  requirements-dev.txt 开发测试依赖
+  .env.example         环境变量模板（复制成 .env 后用）
+  scripts/             一键启动/停止（start_local.ps1/.sh/.cmd、stop_local.*）
 web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构建，产物挂 /app）
   src/views/           DetectView / TasksView / StatsView / RulesView / DynamicView / TrafficView
   src/api.js           接口封装（同源 /api/v1，开发态走 vite proxy 到 8090）
@@ -357,7 +383,56 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 测试机：AMD Ryzen 9 8940HX（32 线程）、31 GB 内存、Windows 11、Python 3.12.10，2026-10-20 实测。
 诚实边界：L3 只复核 L1 灰区样本（默认关闭），全量走 L3 会因 1.16 s/条成为吞吐瓶颈 —— 这正是「三级协同、按需升级」的设计理由。
 
-## 11. 下一步
+## 11. 部署与一键启动
+
+见「2.1 一键启动」；下面只补充部署相关的约定。
+
+### 11.1 依赖清单（三个文件，按需装）
+
+| 文件 | 内容 | 什么时候装 |
+| --- | --- | --- |
+| `requirements.txt` | fastapi / uvicorn / pydantic / python-multipart / pdfplumber（均固定版本） | 必装：最小闭环（L1 规则 + 解析 + 任务/审计/API + 前端静态托管） |
+| `requirements-ml.txt` | onnxruntime / torch / transformers / onnx / onnxscript / modelscope | 需要 L2 真模型、L3 真模型、NER 或重新训练/导出时 |
+| `requirements-dev.txt` | `-r requirements.txt` + pytest / httpx | 跑测试、二次开发时 |
+
+模型权重**不随仓库分发**（`server/models/`、`server/l2_models/` 都在 .gitignore 里），按第 3/4 章给的
+ModelScope 命令重新下载；不下载也能跑，L2/L3/NER 关闭时链路自动降级为 L1-only 并标 `degraded`。
+
+### 11.2 环境变量与 `.env`
+
+```powershell
+Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
+```
+
+全部变量见 `.env.example`（含默认值与注释）。演示最常改的三个开关：`FLOWMASK_ENABLE_L2`、
+`FLOWMASK_ENABLE_L3`、`FLOWMASK_ENABLE_NER`；`.env` 里留空的项会回落默认值（有测试覆盖）。
+
+### 11.3 启动脚本参数（`scripts/start_local.ps1` / `.sh`）
+
+| 参数（PowerShell） | 参数（bash） | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `-Port` | `--port` | 8090 | 主服务端口 |
+| `-BindHost` | `--host` | 127.0.0.1 | 监听地址（对外提供服务时改 0.0.0.0 并设置 `FLOWMASK_API_TOKEN`） |
+| `-WithL2` | `--with-l2` | 关 | 起 `l2_service`（需 `l2_models/bert-sens-onnx`） |
+| `-WithL3` | `--with-l3` | 关 | 起 `l3_service`（需 `models/qwen2.5-1.5b-instruct`） |
+| `-L3Device` | `--l3-device` | cpu | L3 推理设备：cpu / cuda |
+| `-EnableNer` | `--ner` | 关 | 起主服务时启用 NER（需 `models/bert4ner`） |
+| `-NoBrowser` | `--no-browser` | 打开浏览器 | 不自动打开浏览器（服务器/CI 用） |
+
+产物位置：`server/data/run/<name>.pid`、`<name>.log`、`<name>.err.log`；
+`stop_local` 按 pid 文件停止并清理记录。
+
+### 11.4 部署注意（答辩口径）
+
+- **默认只监听回环**，模型与数据都在本机，满足「数据不出机」；对外暴露必须改 `FLOWMASK_API_TOKEN`
+  与 `FLOWMASK_AUDIT_SECRET`（审计链密钥不要用示例值）。
+- **Windows 执行策略**：直接 `\scripts\start_local.ps1` 可能被拦（`AuthorizationManager 检查失败`），
+  用 `.cmd` 包装或 `powershell -ExecutionPolicy Bypass -File .\scripts\start_local.ps1`。
+- **无模型降级路径**：不装 `requirements-ml.txt`、没有权重时，主服务照常可用，
+  只是 L2/L3/NER 不参与（结果里 `degraded=true`）。
+- **Tauri 桌面打包未做**：当前交付形态是「本机一体机 + 浏览器前端」，够演示与验收。
+
+## 12. 下一步
 
 - **L2 真权重**：训练脚本与数据集就绪（`l2_training`，875 条自举数据），等安装 torch 后跑通微调并导出 ONNX；
 - **LLM 敏感度调优**：L3 已接指令裁判（Qwen2.5-1.5B-Instruct），但零样本仍不足以稳定提升分级（见第 4 节矩阵）；下一步按本域标注微调 / 换更大指令模型；

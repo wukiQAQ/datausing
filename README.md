@@ -6,13 +6,14 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、205 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、218 个测试通过（含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
 ```text
 # v2：一条命令跑起来（文档侧主链路）
-cd server && pip install -e ".[dev]" && python -m uvicorn app.main:app --port 8090
+cd server && pip install -r requirements.txt
+scripts\start_local.cmd                       # 一键起（Windows；Linux/macOS 用 ./scripts/start_local.sh）
 #   正式前端：cd ../web && npm install && npm run build → http://127.0.0.1:8090/app/
 #   零依赖单页：http://127.0.0.1:8090/ui/ （未构建前端时根路径自动回落到这里）
 # 网络侧：pcap → 识别分级 → 落库 → 接口查询
