@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..core.paths import executable_dir
 from .types import EntityType, Hit
 
 # 与 rules.py 里 name_kv / address_kv 保持同一量级：NER 的价值是"覆盖率"，不是"提级"。
@@ -100,7 +101,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _server_dir() -> Path:
-    return Path(__file__).resolve().parents[2]
+    """源码运行 = server/；打包运行 = exe 所在目录（权重由用户外置，不塞进 exe）。"""
+    return executable_dir()
 
 
 # --------------------------------------------------------------- 标准 token 分类

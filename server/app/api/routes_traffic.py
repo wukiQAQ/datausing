@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from ..core.config import Settings
+from ..core.paths import resource_root
 from ..core.db import Database
 from ..identify import DetectionPipeline
 from ..parsers.base import Document, Segment
@@ -35,9 +36,9 @@ from .schemas import (
 
 router = APIRouter(tags=["traffic"])
 
-SERVER_DIR = Path(__file__).resolve().parents[2]
+SERVER_DIR = resource_root()
 # 自带示例抓包（server/samples/demo-traffic.pcap）：前端「导入示例」与文档演示共用
-SAMPLE_PCAP = SERVER_DIR / "samples" / "demo-traffic.pcap"
+SAMPLE_PCAP = resource_root() / "samples" / "demo-traffic.pcap"
 # 实时跟随允许的目录：数据目录（默认 server/data）与自带示例目录
 _SAMPLES_DIR = SERVER_DIR / "samples"
 

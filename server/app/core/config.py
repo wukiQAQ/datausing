@@ -12,9 +12,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-# server/app/core/config.py -> server/
+from .paths import default_data_dir
+
+# 源码运行 = server/；打成 exe 后 = 用户目录（%LOCALAPPDATA%\\FlowMask）
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DEFAULT_DATA_DIR = BASE_DIR / "data"
+DEFAULT_DATA_DIR = default_data_dir()
 
 
 def _env_str(name: str, default: str) -> str:

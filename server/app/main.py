@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,14 +34,16 @@ from .api.routes_rules import sync_active_rules
 from .api.routes_stats import router as stats_router
 from .api.routes_tasks import router as tasks_router
 from .api.routes_traffic import router as traffic_router
+from .core.paths import frontend_dir, resource_root
 from .core.config import get_settings
 from .core.db import get_database
 from .traffic.live import get_live_manager
 
-WEBUI_DIR = Path(__file__).resolve().parent / "webui"
+# 自带单页控制台随包分发：开发态是 server/app/webui，打包后是解包目录下的 app/webui
+WEBUI_DIR = resource_root() / "app" / "webui"
 # 正式前端（Vue3 + Element Plus + ECharts）：构建产物在 server/web/dist，
 # 未构建时优雅降级到自带单页控制台，保证任何环境下都能演示。
-FRONTEND_DIR = Path(__file__).resolve().parents[2] / "web" / "dist"
+FRONTEND_DIR = frontend_dir()
 
 DESCRIPTION = """
 FlowMask：网络与文档流量的分级脱敏与审计溯源系统（数据安全作品赛）。
@@ -117,8 +118,10 @@ def create_app() -> FastAPI:
     if FRONTEND_DIR.is_dir():
         app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
-    # 自带控制台：纯静态单页（无构建步骤、无外网依赖），评委打开根路径即可用
-    app.mount("/ui", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
+    # 自带控制台：纯静态单页（无构建步骤、无外网依赖），评委打开根路径即可用；
+    # 打包时若单页资源缺失也不至于让进程起不来（/app 或 /docs 仍可用）
+    if WEBUI_DIR.is_dir():
+        app.mount("/ui", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
