@@ -98,26 +98,43 @@ def bench_l1(iterations: int = 2000) -> dict[str, object]:
 def bench_detect(iterations: int = 200) -> dict[str, object]:
     """端到端：进程内 HTTP POST /api/v1/detect（含 FastAPI 校验与 JSON 序列化）。"""
     workdir = Path(tempfile.mkdtemp(prefix="flowmask-bench-"))
-    os.environ["FLOWMASK_DATA_DIR"] = str(workdir)
-    os.environ["FLOWMASK_DB_PATH"] = str(workdir / "bench.db")
-    os.environ["FLOWMASK_ENABLE_L2"] = "0"
-    os.environ["FLOWMASK_ENABLE_L3"] = "0"
+    # 临时改写进程环境给 app 用，测完必须原样还原：
+    # 否则会污染同进程里后续的测试（曾导致 test_deploy 的配置断言拿到 bench 的临时库）。
+    overrides = {
+        "FLOWMASK_DATA_DIR": str(workdir),
+        "FLOWMASK_DB_PATH": str(workdir / "bench.db"),
+        "FLOWMASK_ENABLE_L2": "0",
+        "FLOWMASK_ENABLE_L3": "0",
+    }
+    saved = {key: os.environ.get(key) for key in overrides}
+    os.environ.update(overrides)
 
     from fastapi.testclient import TestClient  # noqa: PLC0415
 
-    from app.main import create_app  # noqa: PLC0415
+    from app.core.config import get_settings  # noqa: PLC0415
 
-    payload = {"text": SENSITIVE_TEXT, "mask_level": "L3"}
-    with TestClient(create_app()) as client:
-        for _ in range(10):
-            client.post("/api/v1/detect", json=payload)
-        samples: list[float] = []
-        for _ in range(iterations):
-            elapsed, response = _time_ms(lambda: client.post("/api/v1/detect", json=payload))
-            if response.status_code != 200:
-                raise SystemExit(f"/detect 返回 {response.status_code}: {response.text[:200]}")
-            samples.append(elapsed)
-    return summarize("端到端 POST /api/v1/detect（进程内 HTTP）", samples)
+    get_settings.cache_clear()
+    try:
+        from app.main import create_app  # noqa: PLC0415
+
+        payload = {"text": SENSITIVE_TEXT, "mask_level": "L3"}
+        with TestClient(create_app()) as client:
+            for _ in range(10):
+                client.post("/api/v1/detect", json=payload)
+            samples: list[float] = []
+            for _ in range(iterations):
+                elapsed, response = _time_ms(lambda: client.post("/api/v1/detect", json=payload))
+                if response.status_code != 200:
+                    raise SystemExit(f"/detect 返回 {response.status_code}: {response.text[:200]}")
+                samples.append(elapsed)
+        return summarize("端到端 POST /api/v1/detect（进程内 HTTP）", samples)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()
 
 
 def bench_l2(batch_sizes: tuple[int, ...] = (1, 8, 32), repeats: int = 20) -> list[dict[str, object]]:
