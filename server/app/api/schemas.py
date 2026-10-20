@@ -21,6 +21,8 @@ class DetectRequest(BaseModel):
     content_type: str = Field(default="text", description="text / json / csv / sql（自动探测）")
     enable_l2: bool = Field(default=False, description="是否启用 L2 语义识别（需推理服务在线）")
     enable_l3: bool = Field(default=False, description="是否启用 L3 本地大模型复核（需 Ollama 在线）")
+    # None = 跟服务端默认（FLOWMASK_ENABLE_NER）；显式 true/false 按本次请求
+    enable_ner: bool | None = Field(default=None, description="是否启用 L1.5 实体识别（人名/地址，适合自由文本）")
     mask_level: str | None = Field(default=None, description="强制按该级别脱敏；空表示按实际级别")
     min_level: str = Field(default="SAFE", description="只返回 ≥ 该级别的结果（SAFE/L1/L2/L3）")
 
@@ -196,6 +198,9 @@ class HealthOut(BaseModel):
     db_path: str
     enable_l2: bool
     enable_l3: bool
+    # L1.5 是否可用（模型加载成功），供前端决定是否显示「自由文本模式」
+    ner: bool = False
+    ner_backend: str = ""
     uptime_s: int
 
 class DynamicRenderIn(BaseModel):
@@ -263,6 +268,7 @@ class TrafficIngestIn(BaseModel):
     segments: list[IngestSegmentIn] = Field(min_length=1, max_length=200)
     enable_l2: bool = Field(default=False)
     enable_l3: bool = Field(default=False)
+    enable_ner: bool | None = Field(default=None)
     mask_level: str | None = Field(default=None)
     min_level: str = Field(default="SAFE")
 
@@ -288,6 +294,8 @@ class LiveStartIn(BaseModel):
     window_s: float = Field(default=2.0, ge=0.2, le=60.0, description="聚合窗口：每窗口生成一个任务")
     enable_l2: bool = False
     enable_l3: bool = False
+    # None 表示“跟服务端默认走”（FLOWMASK_ENABLE_NER）；显式 true/false 则按本次请求
+    enable_ner: bool | None = None
     mask_level: str | None = None
     min_level: str = "SAFE"
 

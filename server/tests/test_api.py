@@ -213,3 +213,40 @@ def test_bearer_token_enforced(tmp_env, monkeypatch) -> None:
         assert protected.get("/api/v1/health", headers={"Authorization": "Bearer wrong"}).status_code == 401
         ok = protected.get("/api/v1/health", headers={"Authorization": "Bearer s3cret"})
         assert ok.status_code == 200
+
+def test_health_reports_ner_availability(client) -> None:
+    """默认没开 NER 时，/health 明确告诉前端“不可用”，前端据此隐藏开关。"""
+    body = client.get("/api/v1/health").json()
+    assert body["ner"] is False
+    assert body["ner_backend"] == ""
+
+
+def test_detect_enable_ner_switch(client, monkeypatch) -> None:
+    """enable_ner 只在显式打开时生效：打开后补出人名，关闭时保持纯 L1 结果。"""
+    from app.api import deps
+    from app.identify.ner import NerSpan
+    from app.identify.pipeline import DetectionPipeline
+
+    class FakeNer:
+        name = "fake-ner"
+
+        def available(self) -> bool:
+            return True
+
+        def detect(self, text: str) -> list[NerSpan]:
+            start = text.find("张三")
+            return [NerSpan(start=start, end=start + 2, label="B-PER")] if start >= 0 else []
+
+    monkeypatch.setattr(deps, "_pipeline", DetectionPipeline(ner=FakeNer()))  # type: ignore[arg-type]
+    text = "张三昨天从福州赶过来，商量下季度的方案。"
+
+    plain = client.post("/api/v1/detect", json={"text": text}).json()
+    assert plain["findings"] == []
+
+    with_ner = client.post("/api/v1/detect", json={"text": text, "enable_ner": True}).json()
+    assert with_ner["findings"], "开 NER 后应该补出姓名"
+    finding = with_ner["findings"][0]
+    assert "name" in finding["types"]
+    span = next(item for item in finding["spans"] if item["type"] == "name")
+    assert text[span["start"] : span["end"]] == "张三"
+    assert "ner" in finding["model_chain"]

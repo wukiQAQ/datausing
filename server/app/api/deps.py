@@ -73,6 +73,7 @@ def build_options(
     *,
     enable_l2: bool = False,
     enable_l3: bool = False,
+    enable_ner: bool = False,
     mask_level: str | None = None,
     min_level: str = "SAFE",
 ) -> DetectOptions:
@@ -85,6 +86,7 @@ def build_options(
     return DetectOptions(
         enable_l2=enable_l2,
         enable_l3=enable_l3,
+        enable_ner=enable_ner,
         mask_level=parsed_mask,
         min_level=parsed_min,
     )

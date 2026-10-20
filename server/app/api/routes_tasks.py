@@ -26,6 +26,7 @@ async def create_file_task(
     file: UploadFile = File(..., description="txt/json/csv/sql（Word/PDF 待接入）"),
     enable_l2: bool = False,
     enable_l3: bool = False,
+    enable_ner: bool = False,
     mask_level: str | None = None,
     min_level: str = "SAFE",
     settings: Settings = Depends(settings_dep),
@@ -49,6 +50,7 @@ async def create_file_task(
     options = build_options(
         enable_l2=enable_l2 or settings.enable_l2,
         enable_l3=enable_l3 or settings.enable_l3,
+        enable_ner=enable_ner or settings.enable_ner,
         mask_level=mask_level,
         min_level=min_level,
     )
@@ -77,6 +79,7 @@ def create_text_task(
     options = build_options(
         enable_l2=bool(payload.get("enable_l2", False)) or settings.enable_l2,
         enable_l3=bool(payload.get("enable_l3", False)) or settings.enable_l3,
+        enable_ner=bool(payload.get("enable_ner", False)) or settings.enable_ner,
         mask_level=payload.get("mask_level"),
         min_level=str(payload.get("min_level") or "SAFE"),
     )

@@ -73,6 +73,7 @@ def dynamic_render(
 ) -> DynamicRenderOut:
     options = DetectOptions(
         enable_l2=settings.enable_l2,
+        enable_ner=settings.enable_ner,
         enable_l3=settings.enable_l3,
         mask_level=_parse_mask_level(payload.mask_level),
     )

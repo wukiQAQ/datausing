@@ -84,7 +84,7 @@ def test_pipeline_merges_ner_hits() -> None:
     text = "客户张三，电话 13800138000"
     ner = _FakeNer([NerSpan(start=2, end=4, label="B-PER")])
     pipeline = DetectionPipeline(ner=ner)  # type: ignore[arg-type]
-    finding = pipeline.analyze_text(text, DetectOptions())
+    finding = pipeline.analyze_text(text, DetectOptions(enable_ner=True))
     assert finding is not None
     assert "name" in finding.types and "phone" in finding.types
     assert "ner" in finding.model_chain
@@ -101,7 +101,7 @@ def test_pipeline_ner_overlap_does_not_duplicate() -> None:
     text = "电话 13800138000"
     ner = _FakeNer([NerSpan(start=3, end=14, label="B-PER")])
     pipeline = DetectionPipeline(ner=ner)  # type: ignore[arg-type]
-    finding = pipeline.analyze_text(text, DetectOptions())
+    finding = pipeline.analyze_text(text, DetectOptions(enable_ner=True))
     assert finding is not None
     assert finding.types == ["phone"]
     assert finding.hits == 1
@@ -112,7 +112,7 @@ def test_pipeline_degrades_when_ner_fails() -> None:
     """NER 崩了只标记 degraded，L1 结论必须照常返回。"""
     text = "电话 13800138000"
     pipeline = DetectionPipeline(ner=_FakeNer([], fail=True))  # type: ignore[arg-type]
-    finding = pipeline.analyze_text(text, DetectOptions())
+    finding = pipeline.analyze_text(text, DetectOptions(enable_ner=True))
     assert finding is not None
     assert finding.degraded is True
     assert finding.types == ["phone"]

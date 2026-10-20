@@ -68,7 +68,7 @@ def _types_of(pipeline, text: str) -> frozenset[str]:
 def _options():
     from app.identify.pipeline import DetectOptions
 
-    return DetectOptions()
+    return DetectOptions(enable_ner=True)
 
 
 def run_probe(

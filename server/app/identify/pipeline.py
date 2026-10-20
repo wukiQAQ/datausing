@@ -189,6 +189,8 @@ class DetectOptions:
 
     enable_l2: bool = False
     enable_l3: bool = False
+    # L1.5：自由文本里的人名/地址（默认关，结构化数据上会多出类别）
+    enable_ner: bool = False
     mask_level: Level | None = None
     min_level: Level = Level.SAFE
 
@@ -364,7 +366,7 @@ class DetectionPipeline:
         reason: str | None = None
 
         # L1.5 实体识别：补"没有字段名"的人名/地址。只补类别、不抬级别（见 ner.py）。
-        if self.ner is not None and self.ner.available():
+        if options.enable_ner and self.ner is not None and self.ner.available():
             try:
                 ner_hits = spans_to_hits(self.ner.detect(text), text)
             except Exception:  # 模型缺失/推理异常一律降级，不打断主链路

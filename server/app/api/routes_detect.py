@@ -57,6 +57,7 @@ def detect_text(
     options = build_options(
         enable_l2=payload.enable_l2 or settings.enable_l2,
         enable_l3=payload.enable_l3 or settings.enable_l3,
+        enable_ner=settings.enable_ner if payload.enable_ner is None else payload.enable_ner,
         mask_level=payload.mask_level,
         min_level=payload.min_level,
     )
@@ -68,6 +69,7 @@ async def detect_file(
     file: UploadFile = File(..., description="待检测文件"),
     enable_l2: bool = False,
     enable_l3: bool = False,
+    enable_ner: bool | None = None,
     mask_level: str | None = None,
     min_level: str = "SAFE",
     settings: Settings = Depends(settings_dep),
@@ -90,6 +92,7 @@ async def detect_file(
     options = build_options(
         enable_l2=enable_l2 or settings.enable_l2,
         enable_l3=enable_l3 or settings.enable_l3,
+        enable_ner=settings.enable_ner if enable_ner is None else enable_ner,
         mask_level=mask_level,
         min_level=min_level,
     )

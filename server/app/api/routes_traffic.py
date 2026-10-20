@@ -72,6 +72,7 @@ async def import_traffic(
     pcap: UploadFile = File(..., description="pcap / pcapng 文件"),
     enable_l2: bool = False,
     enable_l3: bool = False,
+    enable_ner: bool | None = None,
     mask_level: str | None = None,
     min_level: str = "SAFE",
     settings: Settings = Depends(settings_dep),
@@ -102,7 +103,11 @@ async def import_traffic(
         ) from exc
 
     options = build_options(
-        enable_l2=enable_l2, enable_l3=enable_l3, mask_level=mask_level, min_level=min_level
+        enable_l2=enable_l2,
+        enable_l3=enable_l3,
+        enable_ner=settings.enable_ner if enable_ner is None else enable_ner,
+        mask_level=mask_level,
+        min_level=min_level,
     )
     task_id = create_task(
         db,
@@ -132,6 +137,7 @@ async def import_traffic(
 )
 def ingest_traffic(
     payload: TrafficIngestIn,
+    settings: Settings = Depends(settings_dep),
     db: Database = Depends(db_dep),
     pipeline: DetectionPipeline = Depends(pipeline_dep),
     operator=Depends(operator_dep),
@@ -148,6 +154,7 @@ def ingest_traffic(
     )
     options = build_options(
         enable_l2=payload.enable_l2,
+        enable_ner=settings.enable_ner if payload.enable_ner is None else payload.enable_ner,
         enable_l3=payload.enable_l3,
         mask_level=payload.mask_level,
         min_level=payload.min_level,
@@ -232,6 +239,7 @@ def live_start(
     options = build_options(
         enable_l2=payload.enable_l2,
         enable_l3=payload.enable_l3,
+        enable_ner=settings.enable_ner if payload.enable_ner is None else payload.enable_ner,
         mask_level=payload.mask_level,
         min_level=payload.min_level,
     )
