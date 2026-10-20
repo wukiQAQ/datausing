@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { api, LEVEL_COLORS, LEVEL_LABELS } from "../api";
 
@@ -102,6 +102,65 @@ function levelColor(level) {
 function levelLabel(level) {
   return LEVEL_LABELS[level] || level;
 }
+
+// ---------------- 实时旁路 ----------------
+
+const liveSessions = ref([]);
+const liveBusy = ref(false);
+const liveForm = ref({ pcap_path: "data/live.pcap", interval_ms: 500, window_s: 2.0 });
+let liveTimer = null;
+
+async function loadLive() {
+  try {
+    const body = await api.liveList();
+    liveSessions.value = body.sessions || [];
+  } catch (err) {
+    // 实时会话列表失败不打断导入主流程，静默即可
+  }
+}
+
+async function startLive() {
+  liveBusy.value = true;
+  try {
+    const res = await api.liveStart({ ...liveForm.value });
+    ElMessage.success(`已开始跟随 ${res.pcap_path}`);
+    await loadLive();
+  } catch (err) {
+    ElMessage.error(String(err));
+  } finally {
+    liveBusy.value = false;
+  }
+}
+
+async function stopLive(row) {
+  liveBusy.value = true;
+  try {
+    await api.liveStop(row.live_id);
+    ElMessage.success("已停止跟随（未写完的窗口会先落库）");
+    await loadLive();
+  } catch (err) {
+    ElMessage.error(String(err));
+  } finally {
+    liveBusy.value = false;
+  }
+}
+
+async function clearLive() {
+  try {
+    const res = await api.liveClear();
+    ElMessage.success(`已清理 ${res.cleared} 个已停止的会话`);
+    await loadLive();
+  } catch (err) {
+    ElMessage.error(String(err));
+  }
+}
+
+onMounted(() => {
+  loadLive();
+  liveTimer = setInterval(loadLive, 2000);
+  if (new URLSearchParams(location.search).get("live")) startLive();
+});
+onBeforeUnmount(() => clearInterval(liveTimer));
 </script>
 
 <template>
@@ -187,6 +246,53 @@ function levelLabel(level) {
       </el-table-column>
       <el-table-column prop="hits" label="命中" width="70" />
       <el-table-column prop="masked" label="脱敏副本" min-width="280" show-overflow-tooltip />
+    </el-table>
+  </el-card>
+
+  <el-card shadow="never" style="margin-top: 16px">
+    <template #header>
+      <div class="card-head">
+        <span>实时旁路（跟随持续增长的 pcap 文件）</span>
+        <span class="hint">服务端不直接抓网卡：由 dumpcap / Wireshark / 自研采集器持续写文件，这里按窗口增量检测</span>
+      </div>
+    </template>
+
+    <el-form inline>
+      <el-form-item label="抓包文件">
+        <el-input v-model="liveForm.pcap_path" style="width: 240px" placeholder="data/live.pcap" />
+      </el-form-item>
+      <el-form-item label="轮询间隔">
+        <el-input-number v-model="liveForm.interval_ms" :min="100" :max="10000" :step="100" />
+      </el-form-item>
+      <el-form-item label="落库窗口(s)">
+        <el-input-number v-model="liveForm.window_s" :min="0.2" :max="60" :step="0.5" />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" :loading="liveBusy" @click="startLive">开始跟随</el-button>
+        <el-button @click="loadLive">刷新</el-button>
+        <el-button @click="clearLive">清理已停止</el-button>
+      </el-form-item>
+    </el-form>
+
+    <el-table :data="liveSessions" size="small" empty-text="还没有实时会话：点「开始跟随」后往里追加报文即可">
+      <el-table-column prop="pcap_path" label="抓包文件" min-width="220" show-overflow-tooltip />
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.running ? 'success' : 'info'">{{ row.running ? "跟随中" : "已停止" }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="packets" label="报文" width="80" />
+      <el-table-column prop="segments" label="待检测片段" width="110" />
+      <el-table-column prop="tasks" label="窗口任务" width="90" />
+      <el-table-column label="最近任务" min-width="150">
+        <template #default="{ row }"><code v-if="row.last_task_id">{{ row.last_task_id }}</code></template>
+      </el-table-column>
+      <el-table-column prop="last_error" label="最近错误" min-width="180" show-overflow-tooltip />
+      <el-table-column label="操作" width="110">
+        <template #default="{ row }">
+          <el-button v-if="row.running" size="small" text type="danger" @click="stopLive(row)">停止</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
 </template>

@@ -73,6 +73,12 @@ export const api = {
     if (opts.minLevel) qs.set("min_level", opts.minLevel);
     return request(`/traffic/import?${qs.toString()}`, { method: "POST", body: fd });
   },
+
+  // 实时旁路：服务端跟随一个持续增长的 pcap 文件（由 dumpcap/Wireshark/自研脚本写）
+  liveList: () => request("/traffic/live"),
+  liveStart: (payload) => request("/traffic/live/start", jsonBody(payload)),
+  liveStop: (liveId) => request(`/traffic/live/${liveId}/stop`, { method: "POST" }),
+  liveClear: () => request("/traffic/live", { method: "DELETE" }),
 };
 
 export const LEVEL_COLORS = { L3: "#dc2626", L2: "#ea580c", L1: "#d97706", SAFE: "#0d9488" };
