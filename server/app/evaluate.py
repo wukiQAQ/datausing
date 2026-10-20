@@ -627,18 +627,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     # NER 只装配一次：对比模式下各列必须用同一套 L1.5，才能把增益归因到 L2/L3
     ner = _build_ner(args)
+    ner_enabled = ner is not None
 
     compare: dict[str, Any] | None = None
     if args.compare_l2 or args.compare_l3:
         base_summary, _ = evaluate(
-            args.dataset, options=DetectOptions(), pipeline=build_pipeline(ner=ner)
+            args.dataset,
+            options=DetectOptions(enable_ner=ner_enabled),
+            pipeline=build_pipeline(ner=ner),
         )
         compare = {"l1": base_summary}
         summary, details = base_summary, []
         if args.compare_l2:
             l2_summary, details = evaluate(
                 args.dataset,
-                options=DetectOptions(enable_l2=True),
+                options=DetectOptions(enable_l2=True, enable_ner=ner_enabled),
                 pipeline=build_pipeline(
                     use_mock_l2=not args.l2_endpoint, l2_endpoint=args.l2_endpoint, ner=ner
                 ),
@@ -648,7 +651,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.compare_l3:
             l3_summary, details = evaluate(
                 args.dataset,
-                options=DetectOptions(enable_l2=args.compare_l2, enable_l3=True),
+                options=DetectOptions(enable_l2=args.compare_l2, enable_l3=True, enable_ner=ner_enabled),
                 pipeline=build_pipeline(
                     use_mock_l2=args.compare_l2 and not args.l2_endpoint,
                     use_mock_l3=not args.l3_endpoint,
@@ -665,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
         options = DetectOptions(
             enable_l2=args.enable_l2 or use_mock_l2,
             enable_l3=args.enable_l3 or use_mock_l3,
+            enable_ner=ner_enabled,
         )
         summary, details = evaluate(
             args.dataset,
