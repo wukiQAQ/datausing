@@ -129,7 +129,7 @@ python -m uvicorn app.main:app --port 8090
 | 模式 | 权重 | 输出 | 说明 |
 | --- | --- | --- | --- |
 | `FLOWMASK_L3_MODE=instruct`（**推荐**） | Qwen2.5-1.5B-Instruct（3.0 GB） | 一行 JSON：`{"level":"L3\|L2\|L1\|SAFE","categories":[...],"reason":"…"}` | 按本项目四级标准直接给分级建议与中文理由 |
-| `FLOWMASK_L3_MODE=hf` | Qwen3Guard-Gen-0.6B（1.5 GB） | `Safe / Controversial / Unsafe` | 内容安全口径，对中文 PII 偏保守（几乎不判 Unsafe） |
+| `FLOWMASK_L3_MODE=hf` | Qwen3Guard-Gen-0.6B（1.5 GB） | `Safe / Controversial / Unsafe` | 内容安全口径，对中文 PII 偏保守（几乎不判 Unsafe）；**权重不随仓库分发，需要时用上面的 ModelScope 命令按需下载** |
 | `FLOWMASK_L3_MODE=mock` | 不需要权重 | 启发式 | 测试 / 无权重演示 |
 
 ```powershell
