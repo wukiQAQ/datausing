@@ -23,6 +23,7 @@ from ..parsers.base import Document, Segment
 from .l2 import SemanticClassifier, SemanticHit, build_semantic_classifier
 from .l3 import GuardClassifier, GuardVerdict, build_guard_classifier
 from .masking import mask
+from .ner import NerDetector, build_ner_detector, spans_to_hits
 from .normalize import map_hit_span, normalize_with_map
 from .scoring import analyze as analyze_l1
 from .scoring import level_for, score
@@ -253,15 +254,18 @@ class DetectionPipeline:
         self,
         semantic: SemanticClassifier | None = None,
         guard: GuardClassifier | None = None,
+        ner: NerDetector | None = None,
     ) -> None:
         self.semantic = semantic
         self.guard = guard
+        self.ner = ner
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "DetectionPipeline":
         return cls(
             semantic=build_semantic_classifier(settings),
             guard=build_guard_classifier(settings),
+            ner=build_ner_detector(settings),
         )
 
     # ---- 对外入口 -------------------------------------------------------
@@ -358,6 +362,19 @@ class DetectionPipeline:
         result = analyze_l1(text)
         chain = ["l1"]
         reason: str | None = None
+
+        # L1.5 实体识别：补"没有字段名"的人名/地址。只补类别、不抬级别（见 ner.py）。
+        if self.ner is not None and self.ner.available():
+            try:
+                ner_hits = spans_to_hits(self.ner.detect(text), text)
+            except Exception:  # 模型缺失/推理异常一律降级，不打断主链路
+                ner_hits = []
+                result.degraded = True
+            if ner_hits:
+                merged = _merge_ner_hits(result.hits, ner_hits)
+                if len(merged) > len(result.hits):
+                    result = score(merged)
+                    chain.append("ner")
 
         if options.enable_l2 and self.semantic is not None and self.semantic.available():
             # L2 只处理 L1 命中的样本：直达高危也要过一遍语义复核，
@@ -504,3 +521,23 @@ def _merge_l2(result: Result, semantic_hits: list[SemanticHit]) -> Result:
         result.level = level_for(result.score, result.direct)
         result.types = updated_types
     return result
+
+
+def _overlaps(hit: Hit, others: list[Hit]) -> bool:
+    """两个命中字符区间是否重叠（端点相接不算重叠）。"""
+    return any(hit.start < other.end and other.start < hit.end for other in others)
+
+
+def _merge_ner_hits(l1_hits: list[Hit], ner_hits: list[Hit]) -> list[Hit]:
+    """把 NER 命中并入 L1：与已有命中重叠的一律丢弃（L1 更精确，先入为主）。
+
+    这样"13800138000"既被手机号规则命中、又被 NER 当成数字片段时不会重复计数，
+    也不会因为 NER 的粗区间覆盖掉规则的精确区间（脱敏依赖精确区间）。
+    """
+    merged = list(l1_hits)
+    for hit in ner_hits:
+        if _overlaps(hit, merged):
+            continue
+        merged.append(hit)
+    merged.sort(key=lambda item: item.start)
+    return merged

@@ -64,6 +64,10 @@ class Settings:
     l3_timeout_s: float
     max_upload_mb: int
     cors_origins: tuple[str, ...]
+    # L1.5 实体识别（人名/地址），默认关闭：开启会额外拉起一个 NER 模型
+    enable_ner: bool
+    ner_model_dir: str
+    ner_device: str
 
     @classmethod
     def load(cls) -> "Settings":
@@ -88,6 +92,9 @@ class Settings:
             l3_timeout_s=_env_float("L3_TIMEOUT_S", 5.0),
             max_upload_mb=_env_int("MAX_UPLOAD_MB", 20),
             cors_origins=tuple(x.strip() for x in origins.split(",") if x.strip()),
+            enable_ner=_env_bool("ENABLE_NER", False),
+            ner_model_dir=_env_str("NER_MODEL_DIR", ""),
+            ner_device=_env_str("NER_DEVICE", "cpu").strip().lower(),
         )
 
 

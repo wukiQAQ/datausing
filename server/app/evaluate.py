@@ -129,6 +129,7 @@ def build_pipeline(
     use_mock_l3: bool = False,
     l2_endpoint: str = "",
     l3_endpoint: str = "",
+    ner=None,
 ) -> DetectionPipeline:
     """按评测模式构造流水线：默认按配置（L1 only），mock/真实 HTTP 后端按需注入。"""
     semantic = HttpSemanticAdapter(l2_endpoint) if l2_endpoint else (
@@ -140,9 +141,9 @@ def build_pipeline(
         guard = MockGuardAdapter()
     else:
         guard = None
-    if semantic is None and guard is None:
+    if semantic is None and guard is None and ner is None:
         return DetectionPipeline.from_settings(get_settings())
-    return DetectionPipeline(semantic=semantic, guard=guard)
+    return DetectionPipeline(semantic=semantic, guard=guard, ner=ner)
 
 _PARSERS: dict[str, Callable[[str], Any]] = {
     "text": parse_text,
@@ -544,6 +545,18 @@ def render_markdown(summary: dict[str, Any], details: list[dict[str, Any]], meta
     return "\n".join(lines)
 
 
+def _build_ner(args: argparse.Namespace):
+    """按 --enable-ner 装配 NER 检测器（不开时为 None，评测口径与之前一致）。"""
+    if not getattr(args, "enable_ner", False):
+        return None
+    from .identify.ner import build_ner_detector
+
+    detector = build_ner_detector()
+    if detector is None:
+        raise SystemExit("--enable-ner 需要 FLOWMASK_ENABLE_NER=1（以及可用的 NER 模型目录）")
+    return detector
+
+
 def _mode_label(args: argparse.Namespace) -> str:
     """把命令行开关翻译成报告里的模式名。"""
     l2_name = "L2(真模型)" if args.l2_endpoint else "L2(mock)"
@@ -592,6 +605,11 @@ def main(argv: list[str] | None = None) -> int:
         help="配合 --compare-l2：用真实 L2 服务（如 http://127.0.0.1:8093/v1/classify）替代 mock 后端",
     )
     parser.add_argument(
+        "--enable-ner",
+        action="store_true",
+        help="启用 L1.5 实体识别（人名/地址），需先设置 FLOWMASK_ENABLE_NER=1 或模型目录",
+    )
+    parser.add_argument(
         "--enable-l3-mock",
         action="store_true",
         help="用内置 mock L3 后端（启发式护栏，无需权重）跑复核链路",
@@ -607,17 +625,23 @@ def main(argv: list[str] | None = None) -> int:
         help="在对比表里加入 L3 一列（默认 mock；给了 --l3-endpoint 则用真模型，可与 --compare-l2 叠加）",
     )
     args = parser.parse_args(argv)
+    # NER 只装配一次：对比模式下各列必须用同一套 L1.5，才能把增益归因到 L2/L3
+    ner = _build_ner(args)
 
     compare: dict[str, Any] | None = None
     if args.compare_l2 or args.compare_l3:
-        base_summary, _ = evaluate(args.dataset, options=DetectOptions(), pipeline=build_pipeline())
+        base_summary, _ = evaluate(
+            args.dataset, options=DetectOptions(), pipeline=build_pipeline(ner=ner)
+        )
         compare = {"l1": base_summary}
         summary, details = base_summary, []
         if args.compare_l2:
             l2_summary, details = evaluate(
                 args.dataset,
                 options=DetectOptions(enable_l2=True),
-                pipeline=build_pipeline(use_mock_l2=not args.l2_endpoint, l2_endpoint=args.l2_endpoint),
+                pipeline=build_pipeline(
+                    use_mock_l2=not args.l2_endpoint, l2_endpoint=args.l2_endpoint, ner=ner
+                ),
             )
             compare["l2"] = l2_summary
             summary = l2_summary
@@ -630,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
                     use_mock_l3=not args.l3_endpoint,
                     l2_endpoint=args.l2_endpoint,
                     l3_endpoint=args.l3_endpoint,
+                    ner=ner,
                 ),
             )
             compare["l3"] = l3_summary
@@ -642,7 +667,9 @@ def main(argv: list[str] | None = None) -> int:
             enable_l3=args.enable_l3 or use_mock_l3,
         )
         summary, details = evaluate(
-            args.dataset, options=options, pipeline=build_pipeline(use_mock_l2, use_mock_l3)
+            args.dataset,
+            options=options,
+            pipeline=build_pipeline(use_mock_l2, use_mock_l3, ner=ner),
         )
 
     from datetime import datetime
@@ -652,13 +679,19 @@ def main(argv: list[str] | None = None) -> int:
         command += f" --l2-endpoint {args.l2_endpoint}"
     if args.l3_endpoint:
         command += f" --l3-endpoint {args.l3_endpoint}"
+    if ner is not None:
+        command += " --enable-ner"
+    mode = _mode_label(args)
+    if ner is not None:
+        mode += "（含 L1.5 NER）"
     meta = {
         "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
         "dataset": str(args.dataset),
-        "mode": _mode_label(args),
+        "mode": mode,
         "command": command,
         "l2_endpoint": args.l2_endpoint,
         "l3_endpoint": args.l3_endpoint,
+        "ner": ner is not None,
         "compare": compare,
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
