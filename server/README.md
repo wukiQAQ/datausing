@@ -602,12 +602,20 @@ powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 模型权重**不打进 exe**（这是体积能压到 50 MB 的原因）：把 `l2_models/`、`models/` 放到 **exe 同级目录**即可被自动识别；
 没有权重也能启动，链路自动降级为 L1-only（`degraded=true`）。
 
-在桌面放一个双击入口（快捷方式的「起始位置」会自动指向 exe 目录）：
+在桌面放双击入口（「启动」和「停止」两个快捷方式，起始位置会自动指向 exe 目录）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1            # 桌面「FlowMask」
+powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1 -Mode stop  # 桌面「FlowMask 停止」
 # 自定义名字/路径：-ExePath D:\tools\FlowMask.exe -Name "FlowMask 演示"
 ```
+
+停止有两条路，都不需要去找进程管理器：
+
+- **关窗口即停**：用 app 窗口模式打开时，关掉那个窗口服务就退出（`--keep-running` 可改成保留后台）；
+  浏览器把窗口交给已有实例、跟踪不到的情况会提示「请用停止快捷方式退出」；
+- **停止快捷方式**：`FlowMask.exe --stop`（后台实例的 pid 记录在 `run/desktop.pid`，也按进程名兜底），
+  结果写到 `run/last-stop.txt`，双击后会短暂显示一句「已停止 / 没有运行中的实例」。
 
 > **为什么解包目录固定在 exe 旁边**：onefile 启动时要先把自身解压到一个临时目录，默认用 `%TEMP%`。
 > 有的机器 `%TEMP%` 被安全软件/组策略限制不可写，会报 `Could not create temporary directory` 直接闪退；
