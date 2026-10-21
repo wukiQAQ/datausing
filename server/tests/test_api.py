@@ -239,12 +239,13 @@ def test_detect_enable_ner_switch(client, monkeypatch) -> None:
             return True
 
         def detect(self, text: str) -> list[NerSpan]:
-            start = text.find("福州")
+            start = text.find("宁德")
             return [NerSpan(start=start, end=start + 2, label="B-LOC")] if start >= 0 else []
 
     monkeypatch.setattr(deps, "_pipeline", DetectionPipeline(ner=FakeNer()))  # type: ignore[arg-type]
-    # 这句 L1 抓不到：地名没有省/市/区/路的完整层级，只有 NER 能补出来。
-    text = "他昨天从福州赶过来，商量下季度的方案。"
+    # 用「宁德」而不是「福州」：地名库只收省会/主要地级市，宁德既不在地名库、
+    # 又没有省/市/区/路后缀与方位词，L1 一定抓不到，只有 NER 能补出来。
+    text = "他昨天从宁德赶过来，商量下季度的方案。"
 
     plain = client.post("/api/v1/detect", json={"text": text}).json()
     assert plain["findings"] == []
@@ -254,6 +255,6 @@ def test_detect_enable_ner_switch(client, monkeypatch) -> None:
     finding = with_ner["findings"][0]
     assert "address" in finding["types"]
     span = next(item for item in finding["spans"] if item["type"] == "address")
-    assert text[span["start"] : span["end"]] == "福州"
+    assert text[span["start"] : span["end"]] == "宁德"
     assert "ner" in finding["model_chain"]
 

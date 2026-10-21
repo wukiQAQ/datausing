@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from .decode import decode_enabled_by_default, decoded_hits
+from .gazetteer import gazetteer_enabled_by_default, gazetteer_hits
 from .rules import dedupe_overlaps, detect
 from .types import EntityType, Hit, Level, Result
 
@@ -86,17 +87,30 @@ def score(hits: list[Hit]) -> Result:
     )
 
 
-def analyze(text: str, *, enable_decode: bool | None = None) -> Result:
-    """一次完整识别：L1 规则 +（可选）编码载荷解码复核 + 评分分级。
+def analyze(
+    text: str,
+    *,
+    enable_decode: bool | None = None,
+    enable_gazetteer: bool | None = None,
+) -> Result:
+    """一次完整识别：L1 规则 + 地名库补白 + 编码载荷解码复核 + 评分分级。
 
-    ``enable_decode=None`` 时跟随环境变量开关（默认开启）；
+    ``enable_decode`` / ``enable_gazetteer`` 传 None 时跟随环境变量开关（默认开启）；
     显式传 False 可关掉，便于做消融实验与回归对照。
     """
     hits = detect(text)
+    extras: list[Hit] = []
+
+    if enable_gazetteer is None:
+        enable_gazetteer = gazetteer_enabled_by_default()
+    if enable_gazetteer:
+        extras.extend(gazetteer_hits(text))
+
     if enable_decode is None:
         enable_decode = decode_enabled_by_default()
     if enable_decode:
-        extra = decoded_hits(text, detect)
-        if extra:
-            hits = dedupe_overlaps(hits + extra)
+        extras.extend(decoded_hits(text, detect))
+
+    if extras:
+        hits = dedupe_overlaps(hits + extras)
     return score(hits)

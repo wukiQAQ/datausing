@@ -41,11 +41,12 @@ def test_run_probe_with_fake_detector_improves_recall() -> None:
     assert summary["with_ner_hits"] > summary["without_ner_hits"]
     assert summary["with_ner_recall"] > summary["without_ner_recall"]
 
-    # 纯叙述、没有字段名的样本：L1 只能抓到句首人名（新增 free-text 规则），
-    # 地址仍然只有 NER 能补 —— 这正是「L1 兜不住自由文本」的证据。
-    first = rows[0]
-    assert "address" in first.with_ner and "address" not in first.without_ner
-    assert first.improved is True
+    # 地名库上线后 L1 已能兜住一部分地址（first 的 address 不再依赖 NER），
+    # NER 现在的增量价值集中在「人名/机构等 L1 规则覆盖不到的专名」上。
+    improved = [row for row in rows if row.with_ner - row.without_ner]
+    assert len(improved) >= 3
+    assert any("name" in row.with_ner and "name" not in row.without_ner for row in improved)
+    assert "address" in rows[0].without_ner
 
 
 def test_run_probe_without_detector_exits() -> None:
