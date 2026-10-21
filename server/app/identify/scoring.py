@@ -18,7 +18,8 @@
 
 from __future__ import annotations
 
-from .rules import detect
+from .decode import decode_enabled_by_default, decoded_hits
+from .rules import dedupe_overlaps, detect
 from .types import EntityType, Hit, Level, Result
 
 THRESHOLD_HIGH = 0.85
@@ -83,6 +84,17 @@ def score(hits: list[Hit]) -> Result:
     )
 
 
-def analyze(text: str) -> Result:
-    """一次完整识别：L1 规则 + 评分分级。"""
-    return score(detect(text))
+def analyze(text: str, *, enable_decode: bool | None = None) -> Result:
+    """一次完整识别：L1 规则 +（可选）编码载荷解码复核 + 评分分级。
+
+    ``enable_decode=None`` 时跟随环境变量开关（默认开启）；
+    显式传 False 可关掉，便于做消融实验与回归对照。
+    """
+    hits = detect(text)
+    if enable_decode is None:
+        enable_decode = decode_enabled_by_default()
+    if enable_decode:
+        extra = decoded_hits(text, detect)
+        if extra:
+            hits = dedupe_overlaps(hits + extra)
+    return score(hits)
