@@ -27,6 +27,8 @@
 | 性能基准 | ✅ | `server/bench.py` 本机实测：L1 **0.022 ms**/条（≈4.4 万条每秒）、端到端 `/detect` **2.18 ms**（≈459 请求/秒）、L2 int8 单条 7.4→4.1 ms、L3 1.5B **1.16 s**/条；报告 `docs/性能报告.md` 可一条命令复跑 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
 | L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据（默认 800 条，含 30% 困难负例）、弱标注、数据体检、微调 + ONNX 导出；本机真模型 macro-F1 **0.9844**、benign F1 **0.954** |
+| L3 训练侧（LoRA 指令微调） | ✅ | `l3_training/`：351 条评测集金标 → 指令样本（级别 + 类别 + 模板理由），LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 **60.0% → 76.2%**（80 条分层样本），合并成完整权重后 `FLOWMASK_L3_MODE=instruct` 直接加载 |
+| L3 训练侧（LoRA 指令微调） | ✅ | `l3_training/`：351 条评测集金标 → 指令样本（级别 + 类别 + 模板理由），LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 **60.0% → 76.2%**（80 条分层样本），合并成完整权重后 `FLOWMASK_L3_MODE=instruct` 直接加载 |
 
 ## 2. 快速开始
 
@@ -206,6 +208,67 @@ $env:FLOWMASK_L3_ENDPOINT = "http://127.0.0.1:8092/v1/judge"
 > Controversial/PII，换 4B 对分级零收益、更慢，因此不采用；要让 L3 真正贡献召回，
 > 应按本域标注微调（可复用 `l2_training` 的弱标注/训练管线）或换更大指令模型。
 
+### 4.1 L3 训练侧（LoRA 指令微调）
+
+L3 的定位是「复核 + 解释」，但零样本 1.5B 裁判对真实 PII 只会给模糊结论（见上面策略矩阵）。
+`l3_training/` 给它补上本域监督：把评测集金标转成指令样本，LoRA 微调后精度明显提升。
+
+```powershell
+cd server
+python -m l3_training dataset          # 351 条金标 → data/l3_training.jsonl（train 316 / val 35）
+python -m l3_training dry-run          # 数据体检：级别覆盖、目标可解析性
+pip install peft                       # torch/transformers 已在 requirements-ml.txt
+python -m l3_training train --epochs 1 --max-length 768   # GPU 74.5 s（8GB 显存够）
+python -m l3_training merge --out models/qwen2.5-1.5b-sens
+```
+
+**裁判单任务实测**（80 条分层样本，同一套 prompt 与解析）：
+
+| 模型 | 分级准确率 | L3 | L2 | L1 | SAFE | 均延迟 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen2.5-1.5B-Instruct 零样本 | 60.0% | 60% | 35% | 100% | 45% | 918 ms |
+| LoRA 微调 qwen2.5-1.5b-sens | **76.2%** | **90%** | **80%** | 45% | **90%** | 1298 ms |
+
+**接回管道的结论（重要，答辩要说实话）**：
+
+- 微调提升的是「裁判本身」，不等于「端到端分级更准」：管道里 L1+L2 已 **99.7%**，
+  而裁判单任务只有 76.2%，让它覆盖级别反而会往下拉（采信分级建议时 99.7% → 91.2%，
+  主要是 L1 被抬成中危；关掉 `FLOWMASK_L3_TRUST_LEVEL_HINT` 后回到 99.4%）；
+- 所以默认策略保持不变：**L3 只解释/兜底，不覆盖级别**；微调权重作为「自由文本、解释质量」的可选升级，
+  用 `FLOWMASK_L3_MODEL_DIR=models/qwen2.5-1.5b-sens` 切换即可；
+- 训练脚本与推理共用同一段 `INSTRUCT_PROMPT` 和同一行 JSON 契约，接线上零代码改动。
+
+### 4.1 L3 训练侧（LoRA 指令微调）
+
+L3 的定位是「复核 + 解释」，但零样本 1.5B 裁判对真实 PII 只会给模糊结论（见上面策略矩阵）。
+`l3_training/` 给它补上本域监督：把评测集金标转成指令样本，LoRA 微调后精度明显提升。
+
+```powershell
+cd server
+python -m l3_training dataset          # 351 条金标 → data/l3_training.jsonl（train 316 / val 35）
+python -m l3_training dry-run          # 数据体检：级别覆盖、目标可解析性
+pip install peft                       # torch/transformers 已在 requirements-ml.txt
+python -m l3_training train --epochs 1 --max-length 768   # GPU 74.5 s（8GB 显存够）
+python -m l3_training merge --out models/qwen2.5-1.5b-sens
+```
+
+**裁判单任务实测**（80 条分层样本，同一套 prompt 与解析）：
+
+| 模型 | 分级准确率 | L3 | L2 | L1 | SAFE | 均延迟 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen2.5-1.5B-Instruct 零样本 | 60.0% | 60% | 35% | 100% | 45% | 918 ms |
+| LoRA 微调 qwen2.5-1.5b-sens | **76.2%** | **90%** | **80%** | 45% | **90%** | 1298 ms |
+
+**接回管道的结论（重要，答辩要说实话）**：
+
+- 微调提升的是「裁判本身」，不等于「端到端分级更准」：管道里 L1+L2 已 **99.7%**，
+  而裁判单任务只有 76.2%，让它覆盖级别反而会往下拉（采信分级建议时 99.7% → 91.2%，
+  主要是 L1 被抬成中危；关掉 `FLOWMASK_L3_TRUST_LEVEL_HINT` 后回到 99.4%）；
+- 所以默认策略保持不变：**L3 只解释/兜底，不覆盖级别**；微调权重作为「自由文本、解释质量」的可选升级，
+  用 `FLOWMASK_L3_MODEL_DIR=models/qwen2.5-1.5b-sens` 切换即可；
+- 训练脚本与推理共用同一段 `INSTRUCT_PROMPT` 和同一行 JSON 契约，接线上零代码改动。
+- 复现上面的对比：`python l3_judge_compare.py --base http://127.0.0.1:8092/v1/judge --tuned http://127.0.0.1:8093/v1/judge --limit-per-level 20`（两个 l3_service 分别加载基座与微调权重）。
+
 ## 5. 评测跑分
 
 ```powershell
@@ -345,10 +408,12 @@ server/
       live.py          实时旁路：增量跟随 pcap 文件 + 窗口落库
   l2_service/          L2 语义推理服务（mock / onnx 后端 + /v1/classify）
   l2_training/         自举数据集、弱标注、微调脚本
+l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权重合并
+l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权重合并
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（351 条主集 + 200 条 NER 压力集）与评测说明
-  tests/               258 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路、NER 探针、部署脚本
+  tests/               269 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路、NER 探针、部署脚本
   pyproject.toml
   requirements.txt     运行依赖（固定版本）
   requirements-ml.txt  可选：L2/L3/NER/训练与导出
@@ -489,7 +554,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ## 12. 下一步
 
 - **L2 真权重**：已用 bert-base-chinese 微调并导出 ONNX int8（`l2_models/bert-sens-onnx`，单条 10–33 ms）；权重不入库，重训命令见 `l2_training/README.md`；
-- **LLM 敏感度调优**：L3 已接指令裁判（Qwen2.5-1.5B-Instruct），但零样本仍不足以稳定提升分级（见第 4 节矩阵）；下一步按本域标注微调 / 换更大指令模型；
+- **LLM 敏感度调优**：已落地 LoRA 指令微调（`l3_training/`，裁判准确率 60.0% → 76.2%，见 4.1 节）；但管道里 L1+L2 已 99.7%，L3 默认仍只做解释/兜底——下一步是扩大本域标注（含自由文本），再决定是否让 L3 覆盖分级；
 - **NER 权重升级**：机制与前端开关已就绪（服务端开关 + 请求级 `enable_ner`），待更换更高质量中文 NER 权重/领域微调以提升结构化场景精度；
 - **网卡直采（可选）**：实时旁路已支持跟随 pcap 文件（dumpcap/Wireshark/自研采集器写）；若要服务端直接抓网卡，需引入 Npcap/libpcap（管理员权限）作为可选增强；
 - 交付侧：只保留开发与联调，答辩材料由他人负责。

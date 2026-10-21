@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、258 个测试（257 通过 + 1 跳过；含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、269 个测试（268 通过 + 1 跳过；含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -48,6 +48,8 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 实时旁路（跟随 pcap 文件） | 持续跟随 dumpcap/Wireshark/自研采集器写出的 pcap，按窗口把新正文汇总成检测任务（结果进任务页/看板/审计链）；`/traffic/live*` + 前端面板 + `samples/simulate_live_traffic.py` 演示脚本 | ✅ |
 | 动态脱敏视图（授权切换） | `POST /api/v1/dynamic/render` + `/dynamic/policy`：未授权只给脱敏副本、授权返回原文并写审计链；内置页面「动态脱敏」页签可直接演示 | ✅ |
 | 评测集与指标 | 自建标注集 **351 条**（策展 75 + 生成 225 + 稀有类别补样 51，与训练数据 0 重叠）+ 200 条公开语料压力集：L1 only 准确率 94.0% → 接 L2 真模型后 **99.7%**、安全误报率 **20.8%→0.0%**、高危漏检率 0.0%；自由文本上 NER 把压力集准确率从 0.0% 拉到 89.0%，`--compare-l2 --l2-endpoint` 一键复跑 | ✅ |
+| L3 训练侧（LoRA 指令微调） | `server/l3_training/`：351 条金标 → 指令样本，LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 60.0% → **76.2%**，合并后直接接 `l3_service` | ✅ |
+| L3 训练侧（LoRA 指令微调） | `server/l3_training/`：351 条金标 → 指令样本，LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 60.0% → **76.2%**，合并后直接接 `l3_service` | ✅ |
 | L2 训练侧（RoBERTa） | `server/l2_training/`：11 标签（含 benign）、自举数据 800 条（30% 困难负例）、数据体检、微调 + ONNX 导出；本机已训出真模型（macro-F1 0.9844、benign F1 0.954） | ✅ |
 ## 网络流量扩展（阶段一成果，Go 采集端）
 
