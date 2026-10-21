@@ -54,6 +54,24 @@ def test_medical_value_allows_inner_space() -> None:
     assert medical[0].value == "2 型糖尿病"
 
 
+def test_medical_record_key_is_detected() -> None:
+    """「病历记录：高血压三期」是常见写法，键是「病历(记录)」而不是「诊断」。"""
+    hits = detect("病历记录：高血压三期，用药见附表")
+    medical = [hit for hit in hits if hit.type is EntityType.MEDICAL]
+    assert medical, "病历记录键没有被识别"
+    assert medical[0].value.startswith("高血压")
+
+
+def test_medical_english_key_is_detected() -> None:
+    """导出的病历 JSON / SQL 常把键写成 diagnosis，别让它整条漏掉。"""
+    hits = detect('{"patient": "陈静", "diagnosis": "2 型糖尿病", "record_no": 7}')
+    medical = [hit for hit in hits if hit.type is EntityType.MEDICAL]
+    assert medical, "英文键 diagnosis 没有被识别"
+    assert medical[0].value.startswith("2 型糖尿病")
+    # 极端反例：普通英文单词里含 diagnosis 的长词不应命中
+    assert not [hit for hit in detect("autodiagnosis enabled") if hit.type is EntityType.MEDICAL]
+
+
 def test_detect_name_kv_uses_group() -> None:
     hits = detect("姓名：张三")
     assert hits and hits[0].type == EntityType.NAME and hits[0].value == "张三"
