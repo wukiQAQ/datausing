@@ -8,7 +8,8 @@
 - 旁路口径：不串在业务链路上，跟随失败只记录错误，不影响已落库的结论。
 
 实现要点：
-- ``PcapFollower`` 增量解析：记住文件偏移，只解析"凑齐的整条记录"，半条记录留在缓冲区等下次；
+- ``PcapFollower`` 增量解析：同时支持经典 pcap 与 pcapng（``dumpcap``/Wireshark 默认格式），
+  记住文件偏移，只解析"凑齐的整条记录/整块"，半条留在缓冲区等下次；
 - 每 ``interval_ms`` 轮询一次，把最近 ``MAX_RECENT_FRAMES`` 帧拼回会话（跨窗口的迟到包也能拼上），
   用 ``(会话标签, 正文哈希)`` 去重，只把"新正文"送进识别链路；
 - 每 ``window_s`` 秒把窗口内的新正文合成一个任务（复用 ``tasks.create_task``），
@@ -39,6 +40,16 @@ MAX_RECENT_FRAMES = 5000
 MAX_SEGMENTS_PER_WINDOW = 60
 #: 单帧上限（jumbo frame 也够）
 MAX_FRAME_BYTES = 1 << 16
+
+#: pcapng 常量：Section Header Block 的 magic 是字节序无关的回文，
+#: 字节序标记（Byte-Order Magic）放在 SHB 偏移 8 处，用来判断后续块的大小端。
+PCAPNG_SHB_MAGIC = b"\x0a\x0d\x0d\x0a"
+PCAPNG_BOM = 0x1A2B3C4D
+PCAPNG_IDB = 0x00000001
+PCAPNG_SPB = 0x00000003
+PCAPNG_EPB = 0x00000006
+#: 单个 pcapng 块上限，防止损坏文件把内存吃满
+MAX_PCAPNG_BLOCK = 16 << 20
 
 
 class LiveError(ValueError):
@@ -82,23 +93,41 @@ class LiveStats:
 
 
 class PcapFollower:
-    """增量读取持续写入的 pcap 文件。
+    """增量读取持续写入的 pcap / pcapng 文件，只产出「凑齐」的报文。
 
-    只支持经典 pcap：pcapng 的块是变长的、跟随实现容易踩坑，遇到时明确报错让用户改用文件导入。
+    两种容器都支持：
+
+    - **经典 pcap**：24 字节全局头 + 每帧 16 字节记录头；
+    - **pcapng**：块结构（SHB / IDB / EPB / SPB），首块声明字节序，接口描述块声明链路类型。
+      ``dumpcap``、Wireshark 默认导出的就是 pcapng，所以实时跟随必须能吃它。
+
+    半条记录/半个块一律留在缓冲区等下一次追加，绝不把不完整的字节当成报文。
     """
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._buffer = b""
         self._offset = 0
+        self._mode: str | None = None
+        # 经典 pcap 状态
         self._header_ready = False
         self._endian = "<"
         self._nano = False
         self._linktype = 1
+        # pcapng 状态
+        self._ng_known = False
+        self._ng_endian = "<"
+        self._ng_interfaces: list[int] = []
+        self._last_ts = 0.0
 
     @property
     def linktype(self) -> int:
         return self._linktype
+
+    @property
+    def mode(self) -> str:
+        """已识别出的容器格式：``pcap`` / ``pcapng``；还没读到文件头时为 ``unknown``。"""
+        return self._mode or "unknown"
 
     def poll(self) -> list[RawPacket]:
         """读取自上次以来新增的完整报文；文件还不存在时返回空列表（等待抓包工具落盘）。"""
@@ -111,6 +140,17 @@ class PcapFollower:
         if chunk:
             self._buffer += chunk
 
+        if self._mode is None:
+            if len(self._buffer) < 4:
+                return []
+            self._mode = "pcapng" if self._buffer[:4] == PCAPNG_SHB_MAGIC else "pcap"
+        if self._mode == "pcapng":
+            return self._poll_pcapng()
+        return self._poll_pcap()
+
+    # ------------------------------------------------------------ 经典 pcap
+
+    def _poll_pcap(self) -> list[RawPacket]:
         if not self._header_ready:
             if len(self._buffer) < 24:
                 return []
@@ -128,8 +168,9 @@ class PcapFollower:
             frame = self._buffer[16 : 16 + incl_len]
             self._buffer = self._buffer[16 + incl_len :]
             scale = 1_000_000_000 if self._nano else 1_000_000
+            self._last_ts = ts_sec + ts_frac / scale
             packets.append(
-                RawPacket(ts=ts_sec + ts_frac / scale, linktype=self._linktype, frame=frame)
+                RawPacket(ts=self._last_ts, linktype=self._linktype, frame=frame)
             )
         return packets
 
@@ -143,7 +184,7 @@ class PcapFollower:
             self._endian = ">"
             self._nano = magic_be == PCAP_MAGIC_NSEC
         else:
-            raise LiveError("实时跟随只支持经典 pcap；pcapng 请用「文件导入」")
+            raise LiveError("无法识别的抓包格式（实时跟随支持 pcap / pcapng）")
         try:
             _, _, _, _, _, _, linktype = struct.unpack(self._endian + "IHHiIII", self._buffer[:24])
         except struct.error as exc:  # pragma: no cover - 24 字节已校验，理论上到不了
@@ -152,6 +193,88 @@ class PcapFollower:
         self._buffer = self._buffer[24:]
         self._header_ready = True
 
+    # ------------------------------------------------------------ pcapng
+
+    def _poll_pcapng(self) -> list[RawPacket]:
+        packets: list[RawPacket] = []
+
+        while True:
+            if not self._ng_known:
+                if len(self._buffer) < 12:
+                    break
+                if self._buffer[:4] != PCAPNG_SHB_MAGIC:
+                    raise LiveError("pcapng 文件缺少 Section Header Block")
+                self._ng_endian = self._detect_pcapng_endian(self._buffer[8:12])
+                self._ng_known = True
+                self._ng_interfaces = []
+
+            if len(self._buffer) < 12:
+                break
+
+            if self._buffer[:4] == PCAPNG_SHB_MAGIC:  # 新 section：可能换字节序
+                self._ng_endian = self._detect_pcapng_endian(self._buffer[8:12])
+                block_len = struct.unpack(self._ng_endian + "I", self._buffer[4:8])[0]
+                if block_len < 28 or block_len > MAX_PCAPNG_BLOCK:
+                    raise LiveError(f"pcapng Section Header 块长度非法：{block_len}")
+                if len(self._buffer) < block_len:
+                    break
+                self._ng_interfaces = []
+                self._buffer = self._buffer[block_len:]
+                continue
+
+            block_len = struct.unpack(self._ng_endian + "I", self._buffer[4:8])[0]
+            if block_len < 12 or block_len > MAX_PCAPNG_BLOCK:
+                raise LiveError(f"pcapng 块长度非法：{block_len}")
+            if len(self._buffer) < block_len:
+                break  # 半个块：等下一次追加
+            block_type = struct.unpack(self._ng_endian + "I", self._buffer[:4])[0]
+            body = self._buffer[8 : block_len - 4]
+            packet = self._pcapng_packet(block_type, body)
+            if packet is not None:
+                packets.append(packet)
+            self._buffer = self._buffer[block_len :]
+
+        return packets
+
+    def _pcapng_packet(self, block_type: int, body: bytes) -> RawPacket | None:
+        if block_type == PCAPNG_IDB and len(body) >= 8:
+            linktype = struct.unpack(self._ng_endian + "H", body[:2])[0]
+            self._ng_interfaces.append(linktype)
+            if len(self._ng_interfaces) == 1:  # 对外暴露首个接口的链路类型
+                self._linktype = linktype
+            return None
+        if block_type == PCAPNG_EPB and len(body) >= 20:
+            iface_id, ts_high, ts_low, cap_len, _orig_len = struct.unpack(
+                self._ng_endian + "IIIII", body[:20]
+            )
+            if cap_len > MAX_FRAME_BYTES:
+                raise LiveError(f"帧长度 {cap_len} 超过上限，可能不是 pcapng 文件")
+            if len(body) < 20 + cap_len:
+                raise LiveError("pcapng EPB 声明长度与实际数据不一致")
+            linktype = self._ng_interfaces[iface_id] if iface_id < len(self._ng_interfaces) else 1
+            if linktype != 1:
+                return None  # 只解以太网，其它链路类型跳过
+            ts = ((ts_high << 32) | ts_low) / 1_000_000.0
+            self._last_ts = ts
+            return RawPacket(ts=ts, linktype=linktype, frame=body[20 : 20 + cap_len])
+        if block_type == PCAPNG_SPB and len(body) >= 4:
+            data = body[4:]
+            if not data:
+                return None
+            linktype = self._ng_interfaces[0] if self._ng_interfaces else 1
+            if linktype != 1:
+                return None
+            self._last_ts = time.time()  # 简单包块没有时间戳，用当前时间兜底
+            return RawPacket(ts=self._last_ts, linktype=linktype, frame=data)
+        return None  # NRB / ISB / 自定义块：跳过
+
+    @staticmethod
+    def _detect_pcapng_endian(raw: bytes) -> str:
+        if int.from_bytes(raw, "little") == PCAPNG_BOM:
+            return "<"
+        if int.from_bytes(raw, "big") == PCAPNG_BOM:
+            return ">"
+        raise LiveError("pcapng 字节序标记非法（文件可能损坏）")
 
 @dataclass
 class _LiveSession:

@@ -36,6 +36,29 @@ def _synth_frame(port: int, body: str) -> bytes:
     return tcp_frame(port, body.encode("utf-8"))
 
 
+def _pcapng_shb(endian: str = "<") -> bytes:
+    """Section Header Block：magic + 字节序标记 + 版本 + section 长度(-1)。"""
+    body = struct.pack(endian + "IHHq", 0x1A2B3C4D, 1, 0, -1)
+    total = 12 + len(body)
+    return struct.pack(endian + "II", 0x0A0D0D0A, total) + body + struct.pack(endian + "I", total)
+
+
+def _pcapng_idb(endian: str = "<", linktype: int = 1, snaplen: int = 65535) -> bytes:
+    body = struct.pack(endian + "HHI", linktype, 0, snaplen)
+    total = 12 + len(body)
+    return struct.pack(endian + "II", 1, total) + body + struct.pack(endian + "I", total)
+
+
+def _pcapng_epb(ts: float, frame: bytes, endian: str = "<", iface_id: int = 0) -> bytes:
+    ts_us = int(round(ts * 1_000_000))
+    body = struct.pack(
+        endian + "IIIII", iface_id, ts_us >> 32, ts_us & 0xFFFFFFFF, len(frame), len(frame)
+    ) + frame
+    body += b"\x00" * ((-len(frame)) % 4)  # 块总长度必须 4 字节对齐
+    total = 12 + len(body)
+    return struct.pack(endian + "II", 6, total) + body + struct.pack(endian + "I", total)
+
+
 @pytest.fixture()
 def live_manager():
     reset_live_manager_for_tests()
@@ -91,10 +114,104 @@ def test_follower_waits_for_file(tmp_path: Path) -> None:
 
 
 def test_follower_rejects_pcapng(tmp_path: Path) -> None:
-    path = tmp_path / "x.pcapng"
-    path.write_bytes(b"\x0a\x0d\x0d\x0a" + b"\x00" * 40)
-    with pytest.raises(LiveError, match="只支持经典 pcap"):
+    # 坏块长度：明确报错，而不是把垃圾当报文
+    bad = bytearray(_pcapng_shb() + _pcapng_idb())
+    bad[4:8] = struct.pack("<I", 0xFFFFFFF)  # 首块长度非法
+    path = tmp_path / "bad.pcapng"
+    path.write_bytes(bytes(bad))
+    with pytest.raises(LiveError):
         PcapFollower(path).poll()
+
+
+def test_follower_reads_pcapng_incrementally(tmp_path: Path) -> None:
+    """pcapng（dumpcap/Wireshark 默认格式）也要能边写边读。"""
+    path = tmp_path / "live.pcapng"
+    frame_a = _synth_frame(50001, '{"phone":"13800138000"}')
+    frame_b = _synth_frame(50002, "客户张伟，电话 13700137000")
+    path.write_bytes(_pcapng_shb() + _pcapng_idb())
+
+    follower = PcapFollower(path)
+    assert follower.poll() == []
+    assert follower.mode == "pcapng"
+    assert follower.linktype == 1
+
+    # 完整 EPB → 一帧，时间戳按微秒还原
+    path.write_bytes(path.read_bytes() + _pcapng_epb(150.25, frame_a))
+    first = follower.poll()
+    assert len(first) == 1
+    assert first[0].ts == pytest.approx(150.25)
+    assert first[0].frame == frame_a
+
+    # 半个块：不报错、不产出
+    epb = _pcapng_epb(151.5, frame_b)
+    path.write_bytes(path.read_bytes() + epb[: len(epb) // 2])
+    assert follower.poll() == []
+
+    # 补齐剩余字节 → 第二帧
+    path.write_bytes(path.read_bytes() + epb[len(epb) // 2 :])
+    second = follower.poll()
+    assert len(second) == 1
+    assert second[0].ts == pytest.approx(151.5)
+
+
+def test_follower_reads_big_endian_pcapng(tmp_path: Path) -> None:
+    """SHB 声明大端时后续块按大端解析。"""
+    path = tmp_path / "be.pcapng"
+    frame = _synth_frame(50003, '{"email":"zhang.san@example.com"}')
+    path.write_bytes(
+        _pcapng_shb(">") + _pcapng_idb(">") + _pcapng_epb(200.0, frame, endian=">")
+    )
+    packets = PcapFollower(path).poll()
+    assert len(packets) == 1
+    assert packets[0].ts == pytest.approx(200.0)
+    assert packets[0].frame == frame
+
+
+def test_follower_skips_non_ethernet_pcapng(tmp_path: Path) -> None:
+    """接口链路类型不是以太网时跳过（服务端只解以太网）。"""
+    path = tmp_path / "raw.pcapng"
+    path.write_bytes(_pcapng_shb() + _pcapng_idb(linktype=101))  # 101 = RAW IP
+    path.write_bytes(path.read_bytes() + _pcapng_epb(300.0, _synth_frame(50004, "hello")))
+    follower = PcapFollower(path)
+    assert follower.poll() == []
+    assert follower.linktype == 101
+
+
+def test_live_follow_pcapng_end_to_end(client, database, data_dir) -> None:
+    """端到端：跟随 pcapng 文件 → 追加 EPB → 生成任务并能查到命中。"""
+    pcap_path = data_dir / "live-ng.pcapng"
+    pcap_path.parent.mkdir(parents=True, exist_ok=True)
+    pcap_path.write_bytes(_pcapng_shb() + _pcapng_idb())
+
+    started = client.post(
+        "/api/v1/traffic/live/start",
+        json={"pcap_path": "live-ng.pcapng", "interval_ms": 120, "window_s": 0.3},
+    )
+    assert started.status_code == 201, started.text
+    live_id = started.json()["live_id"]
+
+    body = f'{{"name":"李四","phone":"{PHONE}","id_card":"{ID_CARD}"}}'
+    pcap_path.write_bytes(pcap_path.read_bytes() + _pcapng_epb(400.0, _synth_frame(51010, body)))
+
+    def get_live() -> dict:
+        sessions = client.get("/api/v1/traffic/live").json()["sessions"]
+        return next((item for item in sessions if item["live_id"] == live_id), {})
+
+    assert _wait(lambda: get_live().get("tasks", 0) >= 1), get_live()
+    session = get_live()
+    assert session["packets"] >= 1
+    assert session["segments"] >= 1
+    detail = _wait(
+        lambda: client.get(f"/api/v1/tasks/{session['last_task_id']}").json()["status"] == "done"
+    )
+    assert detail
+    task = client.get(f"/api/v1/tasks/{session['last_task_id']}").json()
+    assert task["total_findings"] >= 1
+    assert task["source"].startswith("live:")
+
+    stopped = client.post(f"/api/v1/traffic/live/{live_id}/stop")
+    assert stopped.status_code == 200
+    assert stopped.json()["running"] is False
 
 
 # ---------------- 外部推送 ----------------
