@@ -2,10 +2,11 @@
 
 做的事很朴素：
 1. 选一个可用端口（默认 8765，被占用就顺延）；
-2. 起 FastAPI（uvicorn，同进程线程内）；
+2. 起 FastAPI（uvicorn，同进程线程内），并把 pid 写进 ``run/desktop.pid`` 以便「停止」入口使用；
 3. 等 ``/api/v1/health`` 就绪后，用 Edge/Chrome 的 "app 模式" 打开一个无地址栏的窗口
    （失败则回落到默认浏览器）；
-4. 控制台保持运行，``Ctrl+C`` 退出；打不开浏览器时给出可点击的地址。
+4. 关掉那个应用窗口时默认**自动停服务**（``--keep-running`` 可关掉这个行为）；
+5. 另有 ``--stop``：通知正在运行的实例退出（桌面「停止」快捷方式用），不启动新服务。
 
 打包（PyInstaller）后资源/数据路径由 ``app/core/paths.py`` 决定：
 资源在解包目录、数据在 ``%LOCALAPPDATA%\\FlowMask\\data``、模型权重放 exe 同级 ``models/``。
@@ -15,8 +16,10 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -38,8 +41,11 @@ def _free_port(preferred: int, host: str = "127.0.0.1", attempts: int = 20) -> i
     raise SystemExit(f"{host}:{preferred}~{preferred + attempts - 1} 都被占用，请用 --port 指定其它端口")
 
 
-def _open_window(url: str) -> str:
-    """优先用 Chromium 系浏览器的 app 模式打开（像独立程序窗口），否则退回默认浏览器。"""
+def _open_window(url: str) -> tuple[str, subprocess.Popen | None]:
+    """优先用 Chromium 系浏览器的 app 模式打开（像独立程序窗口），否则退回默认浏览器。
+
+    返回 ``(用哪种方式打开的, 进程句柄或 None)``；进程句柄用来"窗口关掉就停服务"。
+    """
     candidates = [
         os.environ.get("PROGRAMFILES", r"C:\Program Files") + r"\Google\Chrome\Application\chrome.exe",
         os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
@@ -51,18 +57,16 @@ def _open_window(url: str) -> str:
     for exe in candidates:
         if Path(exe).is_file():
             try:
-                import subprocess
-
-                subprocess.Popen(
+                proc = subprocess.Popen(
                     [exe, f"--app={url}", "--window-size=1440,960"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-                return exe
+                return exe, proc
             except OSError:
                 continue
     webbrowser.open(url)
-    return "default-browser"
+    return "default-browser", None
 
 
 def _wait_ready(url: str, timeout_s: float = 60.0) -> bool:
@@ -77,6 +81,157 @@ def _wait_ready(url: str, timeout_s: float = 60.0) -> bool:
         except Exception:  # noqa: BLE001 - 启动期任何异常都视作"还没好"
             time.sleep(0.3)
     return False
+
+
+# --------------------------------------------------------------------------- 运行态：pid 文件与停止
+
+
+def _run_dir() -> Path:
+    """运行时目录（pid 文件放这里）；优先跟随数据目录策略。"""
+    with contextlib.suppress(Exception):
+        from app.core.paths import writable_root
+
+        return writable_root() / "run"
+    import tempfile
+
+    return Path(tempfile.gettempdir()) / "flowmask-run"
+
+
+def _pid_file_path() -> Path:
+    return _run_dir() / "desktop.pid"
+
+
+def _write_pid_file(port: int) -> Path | None:
+    """记录当前实例的 pid/端口，供 ``--stop`` 与桌面「停止」快捷方式定位。"""
+    path = _pid_file_path()
+    record = {
+        "pid": os.getpid(),
+        "port": port,
+        "exe": sys.executable,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+        return path
+    except OSError:
+        return None
+
+
+def _clear_pid_file() -> None:
+    with contextlib.suppress(OSError):
+        _pid_file_path().unlink()
+
+
+def _read_pid_record() -> dict[str, object] | None:
+    try:
+        raw = _pid_file_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_tasklist_csv(text: str, *, exclude: int | None = None) -> list[int]:
+    """解析 ``tasklist /fo csv`` 输出里的 pid 列（csv 第一列是映像名）。"""
+    pids: list[int] = []
+    for line in (text or "").splitlines():
+        line = line.strip().strip('"')
+        if not line or "PID" in line:
+            continue
+        columns = [col.strip('"') for col in line.split('","')]
+        if len(columns) < 2:
+            continue
+        with contextlib.suppress(ValueError):
+            pid = int(columns[1].strip('"'))
+            if pid and (exclude is None or pid != exclude):
+                pids.append(pid)
+    return pids
+
+
+def _excluded_pids() -> set[int]:
+    """不能杀自己，也不能杀 onefile 的引导进程（它是我们的父进程）。"""
+    excluded = {os.getpid()}
+    with contextlib.suppress(OSError, AttributeError):
+        parent = os.getppid()
+        if parent > 0:
+            excluded.add(parent)
+    return excluded
+
+
+def _find_flowmask_pids() -> list[int]:
+    """找出正在运行的 FlowMask 进程（不含自己与自己的引导进程）。"""
+    excluded = _excluded_pids()
+    try:
+        result = subprocess.run(
+            ["tasklist", "/fi", "imagename eq FlowMask.exe", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return [pid for pid in _parse_tasklist_csv(result.stdout) if pid not in excluded]
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def _terminate_pid(pid: int) -> bool:
+    try:
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/F"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _stop_running() -> int:
+    """停掉正在运行的实例：先按 pid 文件精确定位，再按进程名兜底。"""
+    targets: list[int] = []
+    record = _read_pid_record()
+    if record:
+        with contextlib.suppress(TypeError, ValueError):
+            pid = int(record.get("pid") or 0)
+            if pid and pid != os.getpid():
+                targets.append(pid)
+    for pid in _find_flowmask_pids():
+        if pid not in targets:
+            targets.append(pid)
+
+    killed = [pid for pid in targets if _terminate_pid(pid)]
+    _clear_pid_file()
+    message = f"已停止 FlowMask（pid: {', '.join(map(str, killed))}）" if killed else "没有发现正在运行的 FlowMask 实例"
+    print(message, flush=True)
+    _report_stop(message)
+    return 0 if killed else 1
+
+
+def _report_stop(message: str) -> None:
+    """无控制台时可落地一句结果，便于排查「点了停止没反应」。"""
+    with contextlib.suppress(OSError):
+        path = _run_dir() / "last-stop.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n", encoding="utf-8")
+
+
+def _watch_window(process: subprocess.Popen, on_close, *, grace_s: float = 4.0, poll_s: float = 0.5) -> str:
+    """等应用窗口进程退出后回调 ``on_close``。
+
+    Chromium 系浏览器可能把新窗口交给**已存在的浏览器实例**，此时我们拿到的进程会立刻退出；
+    这种"太快退出"视为无法跟踪，不触发停止，避免刚打开就把服务关掉。
+    """
+    deadline = time.time() + grace_s
+    while time.time() < deadline:
+        if process.poll() is not None:
+            return "delegated"
+        time.sleep(poll_s)
+    process.wait()
+    on_close()
+    return "closed"
 
 
 def _frozen_log_path() -> Path:
@@ -165,6 +320,7 @@ def _self_check_report() -> str:
         f"frontend_dir={paths.frontend_dir()} (存在: {paths.frontend_dir().is_dir()})",
         f"webui_dir={paths.resource_root() / 'app' / 'webui'} (存在: {(paths.resource_root() / 'app' / 'webui').is_dir()})",
         f"log_path={_frozen_log_path()}",
+        f"pid_file={_pid_file_path()}",
     ]
     for candidate in (_frozen_log_path(), Path(sys.executable).resolve().parent / "logs" / "desktop.log"):
         try:
@@ -190,8 +346,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--enable-l2", action="store_true", help="启用 L2 语义模型（需 l2_models/bert-sens-onnx）")
     parser.add_argument("--enable-l3", action="store_true", help="启用 L3 大模型复核（需 models/qwen2.5-1.5b-instruct 与已启动的 l3_service）")
     parser.add_argument("--enable-ner", action="store_true", help="启用自由文本 NER（需 models/bert4ner）")
+    parser.add_argument("--keep-running", action="store_true", help="关掉应用窗口后服务继续在后台运行（默认关窗口即停）")
+    parser.add_argument("--stop", action="store_true", help="停止正在运行的 FlowMask 实例后退出（桌面「停止」快捷方式用）")
     parser.add_argument("--self-check", action="store_true", help="打印/落盘一份运行环境自检报告后退出（排障用）")
     args = parser.parse_args(argv)
+
+    if args.stop:
+        return _stop_running()
 
     if args.self_check:
         report = _self_check_report()
@@ -225,6 +386,11 @@ def main(argv: list[str] | None = None) -> int:
     from app.main import create_app
 
     app = create_app()
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False))
+
+    def _request_exit() -> None:
+        print("[FlowMask] 应用窗口已关闭，正在停止服务…", flush=True)
+        server.should_exit = True
 
     def _open_when_ready() -> None:
         if args.no_browser:
@@ -236,9 +402,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_app_window:
             webbrowser.open(url)
             print(f"[FlowMask] 已请求默认浏览器打开：{url}", flush=True)
-        else:
-            opened_with = _open_window(url)
-            print(f"[FlowMask] 已用 {opened_with} 打开应用窗口：{url}", flush=True)
+            return
+        opened_with, window_proc = _open_window(url)
+        print(f"[FlowMask] 已用 {opened_with} 打开应用窗口：{url}", flush=True)
+        if window_proc is not None and not args.keep_running:
+            outcome = _watch_window(window_proc, _request_exit)
+            if outcome == "delegated":
+                print("[FlowMask] 窗口交给已有浏览器实例，无法跟踪关闭事件；请用「停止」快捷方式退出", flush=True)
 
     threading.Thread(target=_open_when_ready, daemon=True).start()
 
@@ -247,10 +417,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  本机访问：{url}", flush=True)
     print(f"  内置单页：http://{host}:{port}/ui/", flush=True)
     print(f"  接口文档：http://{host}:{port}/docs", flush=True)
-    print("  按 Ctrl+C 退出", flush=True)
+    print("  关窗口即停服务（--keep-running 可保留后台）；按 Ctrl+C 也可退出", flush=True)
     print("", flush=True)
 
-    uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+    _write_pid_file(port)
+    try:
+        server.run()
+    finally:
+        _clear_pid_file()
     return 0
 
 

@@ -50,9 +50,19 @@ if (-not (Test-Path $indexHtml)) {
 }
 
 Write-Host "[FlowMask] 2/3 PyInstaller 打包..."
+# 正在运行的 FlowMask 会锁住 exe，导致 PyInstaller 覆盖失败（但脚本仍报成功）；先停掉再打包
+$running = Get-Process -Name FlowMask -ErrorAction SilentlyContinue
+if ($running) {
+    Write-Host "[FlowMask] 检测到正在运行的 FlowMask（pid: $($running.Id -join ', ')），先停止再打包..."
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
 Push-Location $serverDir
 try {
     python -m PyInstaller flowmask.spec --noconfirm --distpath $OutDir --workpath build_exe
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller 打包失败（exit=$LASTEXITCODE），请查看上面的日志（常见原因：exe 正被占用、磁盘空间不足）"
+    }
 }
 finally {
     Pop-Location
@@ -62,6 +72,10 @@ Write-Host "[FlowMask] 3/3 校验产物..."
 $exe = Join-Path $serverDir (Join-Path $OutDir "FlowMask.exe")
 if (-not (Test-Path $exe)) {
     throw "打包失败：没有找到 $exe"
+}
+# 校验产物确实是"这次"打出来的：exe 必须不早于构建脚本
+if ((Get-Item $exe).LastWriteTime -lt (Get-Item $PSCommandPath).LastWriteTime.AddMinutes(-1)) {
+    throw "打包产物未更新（$exe 的修改时间早于构建脚本），可能有进程占用或打包被跳过"
 }
 $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host ""

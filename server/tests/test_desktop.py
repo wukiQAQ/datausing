@@ -40,7 +40,9 @@ def test_open_window_falls_back_to_default_browser(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(desktop.Path, "is_file", lambda self: False)
     monkeypatch.setattr(desktop.webbrowser, "open", lambda url: called.append(url))
 
-    assert desktop._open_window("http://127.0.0.1:8765/app/") == "default-browser"
+    opener, proc = desktop._open_window("http://127.0.0.1:8765/app/")
+    assert opener == "default-browser"
+    assert proc is None
     assert called == ["http://127.0.0.1:8765/app/"]
 
 
@@ -128,3 +130,93 @@ def test_build_script_exists_and_mentions_pyinstaller() -> None:
     assert "PyInstaller" in text or "pyinstaller" in text
     assert "web/dist" in text or "dist\\index.html" in text
     assert "FlowMask.exe" in text
+
+
+# --------------------------------------------------------------------------- 停止入口 / 窗口关闭自动停
+
+
+class _FakeProc:
+    """假的窗口进程：``alive_polls`` 次 poll 返回 None，然后返回退出码。"""
+
+    def __init__(self, alive_polls: int) -> None:
+        self._left = alive_polls
+
+    def poll(self) -> int | None:
+        if self._left > 0:
+            self._left -= 1
+            return None
+        return 0
+
+    def wait(self) -> int:
+        return 0
+
+
+def test_parse_tasklist_csv_extracts_pids() -> None:
+    text = (
+        '"FlowMask.exe","1234","Console","1","50,000 K"\r\n'
+        '"FlowMask.exe","5678","Console","1","50,000 K"\r\n'
+    )
+    assert desktop._parse_tasklist_csv(text) == [1234, 5678]
+    assert desktop._parse_tasklist_csv(text, exclude=1234) == [5678]
+    assert desktop._parse_tasklist_csv("") == []
+
+
+def test_excluded_pids_covers_self_and_bootloader_parent() -> None:
+    # onefile 的引导进程是父进程：--stop 时不能把它一起杀掉，否则退出码会变成 1
+    import os
+
+    excluded = desktop._excluded_pids()
+    assert os.getpid() in excluded
+    assert os.getppid() in excluded
+
+
+def test_watch_window_delegated_when_process_exits_immediately() -> None:
+    fired: list[str] = []
+    # 立刻退出 = 浏览器把窗口交给了已有实例，不能把服务停掉
+    assert desktop._watch_window(_FakeProc(0), lambda: fired.append("x"), grace_s=0.2, poll_s=0.02) == "delegated"
+    assert fired == []
+
+
+def test_watch_window_fires_when_window_closes_after_grace() -> None:
+    fired: list[str] = []
+    # 活过宽限期后退出 = 用户真的关掉了窗口
+    assert desktop._watch_window(_FakeProc(5), lambda: fired.append("x"), grace_s=0.05, poll_s=0.02) == "closed"
+    assert fired == ["x"]
+
+
+def test_stop_running_without_instance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(desktop, "_run_dir", lambda: tmp_path)
+    monkeypatch.setattr(desktop, "_find_flowmask_pids", lambda: [])
+    monkeypatch.setattr(desktop, "_read_pid_record", lambda: None)
+    assert desktop._stop_running() == 1
+    # 结果要落盘，便于"点了停止没反应"时排查
+    assert (tmp_path / "last-stop.txt").read_text(encoding="utf-8").strip()
+
+
+def test_stop_running_kills_recorded_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(desktop, "_run_dir", lambda: tmp_path)
+    monkeypatch.setattr(desktop, "_read_pid_record", lambda: {"pid": 4321})
+    monkeypatch.setattr(desktop, "_find_flowmask_pids", lambda: [4321, 8765])
+    killed: list[int] = []
+    monkeypatch.setattr(desktop, "_terminate_pid", lambda pid: killed.append(pid) or True)
+    assert desktop._stop_running() == 0
+    assert killed == [4321, 8765]
+
+
+def test_pid_file_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(desktop, "_run_dir", lambda: tmp_path)
+    written = desktop._write_pid_file(8765)
+    assert written == tmp_path / "desktop.pid"
+    record = desktop._read_pid_record()
+    assert record is not None and record["port"] == 8765
+    desktop._clear_pid_file()
+    assert desktop._read_pid_record() is None
+
+
+def test_stop_shortcut_script_exists() -> None:
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    stop_cmd = (scripts / "stop_flowmask.cmd").read_text(encoding="utf-8", errors="ignore")
+    assert "--stop" in stop_cmd
+    creator = (scripts / "create_shortcut.ps1").read_text(encoding="utf-8-sig")
+    assert "ValidateSet(\"start\", \"stop\")" in creator
+    assert "FlowMask 停止" in creator
