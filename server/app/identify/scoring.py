@@ -73,7 +73,9 @@ def score(hits: list[Hit]) -> Result:
 
     total = round(min(base + co_occur + identity_bonus, 1.0), 3)
     direct = any(
-        hit.type in DIRECT_TYPES and hit.confidence >= DIRECT_CONFIDENCE for hit in hits
+        hit.type in DIRECT_TYPES
+        and (hit.confidence >= DIRECT_CONFIDENCE or hit.direct_hint)
+        for hit in hits
     )
     return Result(
         hits=list(hits),
