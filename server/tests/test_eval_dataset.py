@@ -40,11 +40,13 @@ def stress() -> list[dict]:
 
 
 def test_dataset_shape(dataset: list[dict]) -> None:
-    """规模与来源构成：策展 75 条 + 生成 225 条 = 300 条。"""
-    assert len(dataset) == 300
+    """规模与来源构成：策展 75 条 + 生成样本（含稀有类别补样），总量 ≥300 条。"""
+    assert len(dataset) >= 300, f"评测集只有 {len(dataset)} 条"
     curated = [row for row in dataset if not row.get("source")]
     generated = [row for row in dataset if row.get("source") == "generated"]
-    assert (len(curated), len(generated)) == (75, 225)
+    assert len(curated) == 75
+    assert len(generated) == len(dataset) - 75
+    assert len(generated) >= 225
 
 
 def test_ids_are_unique(dataset: list[dict], stress: list[dict]) -> None:
@@ -129,7 +131,7 @@ def test_every_level_and_core_type_is_covered(dataset: list[dict]) -> None:
 
 
 def test_level_distribution_is_reasonable(dataset: list[dict]) -> None:
-    """扩到 300 条后，每一级都不少于 60 条，避免某一级样本太少让指标失真。"""
+    """扩样后每一级都不少于 60 条，避免某一级样本太少让指标失真。"""
     for level in LEVEL_NAMES:
         count = sum(1 for row in dataset if row["level"] == level)
         assert count >= 60, f"{level} 只有 {count} 条"
@@ -143,5 +145,9 @@ def test_type_support_is_reported_and_sufficient(dataset: list[dict]) -> None:
     core = {"id_card", "phone", "bank_card", "email", "name", "address", "secret"}
     thin = {typ: stats["by_type"].get(typ, 0) for typ in core if stats["by_type"].get(typ, 0) < 15}
     assert not thin, f"以下核心类别支持数不足 15：{thin}"
+    # 稀有类别补样后应达到每类 30 条，否则"单类别 F1"没有统计意义
+    rare = {"bank_card": 30, "medical": 30, "ip": 30}
+    short = {typ: stats["by_type"].get(typ, 0) for typ, want in rare.items() if stats["by_type"].get(typ, 0) < want}
+    assert not short, f"以下稀有类别支持数不足 30：{short}"
     table = render_stats(stats)
-    assert "类别支持数" in table and "唯一 id 300" in table
+    assert "类别支持数" in table and f"唯一 id {len(dataset)}" in table

@@ -282,19 +282,70 @@
 {"id": "GEN-298", "format": "text", "content": "版本号 3.12.10，构建时间 2026-10-20T13:00:00Z，commit abcdef1。（工单 981）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
 {"id": "GEN-299", "format": "text", "content": "监控指标 pps=1234 bps=5678900 conns=88 drop_rate=0.0001（工单 968）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
 {"id": "GEN-300", "format": "text", "content": "随机串 x7Kp2Lm9Qa 与 UUID 550e8400-e29b-41d4-a716-446655440000 都不是密钥。（工单 420）", "level": "SAFE", "types": [], "note": "困难负例（示例/占位/无关数字，扩充）", "source": "generated"}
-{"id": "GEN-301", "format": "text", "content": "报销单：王磊，身份证 35010219650121330X，联系电话 15026259244，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
-{"id": "GEN-302", "format": "text", "content": "抄送邮箱：zhou.ting10@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-303", "format": "text", "content": "抄送邮箱：chen.jing33@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-304", "format": "text", "content": "客户姓名：周婷，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
-{"id": "GEN-305", "format": "text", "content": "抄送邮箱：wang.lei21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-306", "format": "text", "content": "联系人姓名：孙浩，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
-{"id": "GEN-307", "format": "text", "content": "抄送邮箱：sun.hao59@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-308", "format": "text", "content": "客户姓名：赵敏，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
-{"id": "GEN-309", "format": "text", "content": "抄送邮箱：zhao.min23@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-310", "format": "text", "content": "抄送邮箱：zhao.min21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-311", "format": "text", "content": "抄送邮箱：sun.hao62@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-312", "format": "text", "content": "客户姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
-{"id": "GEN-313", "format": "text", "content": "联系人姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
-{"id": "GEN-314", "format": "text", "content": "抄送邮箱：sun.hao67@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-315", "format": "text", "content": "抄送邮箱：zhao.min50@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
-{"id": "GEN-316", "format": "text", "content": "客户姓名：何静，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-352", "format": "text", "content": "报销单：王磊，身份证 35010219650121330X，联系电话 15026259244，请尽快处理。", "level": "L3", "types": ["id_card", "phone", "name"], "note": "身份证直达 L3（扩充）", "source": "generated"}
+{"id": "GEN-353", "format": "text", "content": "抄送邮箱：zhou.ting10@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-354", "format": "text", "content": "抄送邮箱：chen.jing33@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-355", "format": "text", "content": "客户姓名：周婷，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-356", "format": "text", "content": "抄送邮箱：wang.lei21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-357", "format": "text", "content": "联系人姓名：孙浩，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-358", "format": "text", "content": "抄送邮箱：sun.hao59@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-359", "format": "text", "content": "客户姓名：赵敏，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-360", "format": "text", "content": "抄送邮箱：zhao.min23@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-361", "format": "text", "content": "抄送邮箱：zhao.min21@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-362", "format": "text", "content": "抄送邮箱：sun.hao62@example.com", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-363", "format": "text", "content": "客户姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-364", "format": "text", "content": "联系人姓名：曹颖，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "联系人姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-365", "format": "text", "content": "抄送邮箱：sun.hao67@mail.example.org", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-366", "format": "text", "content": "抄送邮箱：zhao.min50@corp.example.cn", "level": "L1", "types": ["email"], "note": "仅邮箱（扩充）", "source": "generated"}
+{"id": "GEN-367", "format": "text", "content": "客户姓名：何静，请客服核实后回访。", "level": "L1", "types": ["name"], "note": "仅姓名字段（扩充）", "source": "generated"}
+{"id": "GEN-301", "format": "text", "content": "内网主机 10.13.67.244 正在同步日志（记录 0000），出口带宽正常。", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：内网 IP（文本，SAFE）", "source": "generated"}
+{"id": "GEN-302", "format": "json", "content": "{\"client_ip\": \"10.3.200.146\", \"action\": \"login\", \"result\": \"ok\", \"record_no\": 1}", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：客户端 IP（JSON，SAFE）", "source": "generated"}
+{"id": "GEN-303", "format": "sql", "content": "select * from audit where ip = '10.17.96.232' and action = 'login' and record_no = 2;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-304", "format": "text", "content": "内网主机 10.13.186.249 正在同步日志（记录 0003），出口带宽正常。", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：内网 IP（文本，SAFE）", "source": "generated"}
+{"id": "GEN-305", "format": "json", "content": "{\"client_ip\": \"10.25.199.61\", \"action\": \"login\", \"result\": \"ok\", \"record_no\": 4}", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：客户端 IP（JSON，SAFE）", "source": "generated"}
+{"id": "GEN-306", "format": "sql", "content": "select * from audit where ip = '10.12.63.151' and action = 'login' and record_no = 5;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-307", "format": "text", "content": "内网主机 10.4.245.254 正在同步日志（记录 0006），出口带宽正常。", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：内网 IP（文本，SAFE）", "source": "generated"}
+{"id": "GEN-308", "format": "json", "content": "{\"client_ip\": \"10.7.228.227\", \"action\": \"login\", \"result\": \"ok\", \"record_no\": 7}", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：客户端 IP（JSON，SAFE）", "source": "generated"}
+{"id": "GEN-309", "format": "sql", "content": "select * from audit where ip = '10.10.55.187' and action = 'login' and record_no = 8;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-310", "format": "text", "content": "内网主机 10.20.30.57 正在同步日志（记录 0009），出口带宽正常。", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：内网 IP（文本，SAFE）", "source": "generated"}
+{"id": "GEN-311", "format": "json", "content": "{\"client_ip\": \"10.29.252.247\", \"action\": \"login\", \"result\": \"ok\", \"record_no\": 10}", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：客户端 IP（JSON，SAFE）", "source": "generated"}
+{"id": "GEN-312", "format": "sql", "content": "select * from audit where ip = '10.12.202.93' and action = 'login' and record_no = 11;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-313", "format": "text", "content": "内网主机 10.0.78.32 正在同步日志（记录 0012），出口带宽正常。", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：内网 IP（文本，SAFE）", "source": "generated"}
+{"id": "GEN-314", "format": "json", "content": "{\"patient\": \"吴迪\", \"diagnosis\": \"2 型糖尿病\", \"hospital\": \"市第一人民医院\", \"record_no\": 13}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-315", "format": "sql", "content": "select * from audit where ip = '10.5.191.10' and action = 'login' and record_no = 14;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-316", "format": "text", "content": "收款账户：6228486536482171，开户人：曹颖，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-317", "format": "json", "content": "{\"patient\": \"吴迪\", \"diagnosis\": \"慢性肾功能不全\", \"hospital\": \"省立医院\", \"record_no\": 16}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-318", "format": "sql", "content": "select * from audit where ip = '10.10.249.41' and action = 'login' and record_no = 17;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-319", "format": "text", "content": "收款账户：6212264407080905，开户人：冯宇，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-320", "format": "json", "content": "{\"patient\": \"邓超\", \"diagnosis\": \"2 型糖尿病\", \"hospital\": \"市第一人民医院\", \"record_no\": 19}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-321", "format": "sql", "content": "select * from audit where ip = '10.7.146.218' and action = 'login' and record_no = 20;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-322", "format": "text", "content": "收款账户：6217003350826699，开户人：郑爽，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-323", "format": "json", "content": "{\"patient\": \"吴迪\", \"diagnosis\": \"甲状腺结节\", \"hospital\": \"省立医院\", \"record_no\": 22}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-324", "format": "sql", "content": "select * from audit where ip = '10.12.134.100' and action = 'login' and record_no = 23;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-325", "format": "text", "content": "收款账户：6212266724453384，开户人：许杰，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-326", "format": "json", "content": "{\"patient\": \"王磊\", \"diagnosis\": \"慢性肾功能不全\", \"hospital\": \"市第一人民医院\", \"record_no\": 25}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-327", "format": "sql", "content": "select * from audit where ip = '10.30.108.237' and action = 'login' and record_no = 26;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-328", "format": "text", "content": "收款账户：6222026160289835，开户人：孙浩，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-329", "format": "json", "content": "{\"patient\": \"邓超\", \"diagnosis\": \"高血压三级\", \"hospital\": \"区中医院\", \"record_no\": 28}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-330", "format": "sql", "content": "select * from audit where ip = '10.12.239.232' and action = 'login' and record_no = 29;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-331", "format": "text", "content": "收款账户：6212268884119730，开户人：孙浩，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-332", "format": "json", "content": "{\"patient\": \"郑爽\", \"diagnosis\": \"慢性肾功能不全\", \"hospital\": \"市第一人民医院\", \"record_no\": 31}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-333", "format": "sql", "content": "select * from audit where ip = '10.21.45.80' and action = 'login' and record_no = 32;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-334", "format": "text", "content": "收款账户：6212263958625225，开户人：邓超，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-335", "format": "json", "content": "{\"patient\": \"陈静\", \"diagnosis\": \"2 型糖尿病\", \"hospital\": \"区中医院\", \"record_no\": 34}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-336", "format": "sql", "content": "select * from audit where ip = '10.28.222.238' and action = 'login' and record_no = 35;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-337", "format": "text", "content": "收款账户：6217005163404317，开户人：赵敏，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-338", "format": "json", "content": "{\"patient\": \"许杰\", \"diagnosis\": \"抑郁症复诊\", \"hospital\": \"省立医院\", \"record_no\": 37}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-339", "format": "sql", "content": "select * from audit where ip = '10.28.82.117' and action = 'login' and record_no = 38;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-340", "format": "text", "content": "收款账户：6212269290406513，开户人：邓超，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-341", "format": "json", "content": "{\"patient\": \"周婷\", \"diagnosis\": \"慢性肾功能不全\", \"hospital\": \"省立医院\", \"record_no\": 40}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-342", "format": "sql", "content": "select * from audit where ip = '10.23.103.124' and action = 'login' and record_no = 41;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-343", "format": "text", "content": "收款账户：6228487459359156，开户人：吴迪，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-344", "format": "json", "content": "{\"patient\": \"孙浩\", \"diagnosis\": \"慢性肾功能不全\", \"hospital\": \"市第一人民医院\", \"record_no\": 43}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-345", "format": "sql", "content": "select * from audit where ip = '10.21.85.16' and action = 'login' and record_no = 44;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-346", "format": "text", "content": "收款账户：6212262567986028，开户人：王磊，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-347", "format": "json", "content": "{\"patient\": \"许杰\", \"diagnosis\": \"抑郁症复诊\", \"hospital\": \"省立医院\", \"record_no\": 46}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-348", "format": "sql", "content": "select * from audit where ip = '10.30.89.114' and action = 'login' and record_no = 47;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}
+{"id": "GEN-349", "format": "text", "content": "收款账户：6217005904620825，开户人：曹颖，请核对后打款。", "level": "L3", "types": ["bank_card", "name"], "note": "稀有类别补样：银行卡（文本）", "source": "generated"}
+{"id": "GEN-350", "format": "json", "content": "{\"patient\": \"何静\", \"diagnosis\": \"甲状腺结节\", \"hospital\": \"市第一人民医院\", \"record_no\": 49}", "level": "L2", "types": ["medical", "name"], "note": "稀有类别补样：病历 JSON", "source": "generated"}
+{"id": "GEN-351", "format": "sql", "content": "select * from audit where ip = '10.9.97.153' and action = 'login' and record_no = 50;", "level": "SAFE", "types": ["ip"], "note": "稀有类别补样：审计 IP（SQL，SAFE）", "source": "generated"}

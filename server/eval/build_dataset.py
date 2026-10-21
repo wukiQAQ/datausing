@@ -1,4 +1,4 @@
-"""可复现地构建评测集：75 条人工策展样本 + 程序生成样本（补齐到 300 条）+ 公开语料压力集。
+"""可复现地构建评测集：75 条人工策展样本 + 程序生成样本（补齐到 300 条、稀有类别再补到每类 ≥30）+ 公开语料压力集。
 
 为什么要有这个脚本：
 - 只靠自建样本时，"98.7%"容易被问"是不是自己出题自己考"；把每一行的
@@ -9,14 +9,14 @@
 
 用法（在 `server/` 下）::
 
-    python eval/build_dataset.py                    # 重建 eval/dataset.jsonl（300 条，幂等）
+    python eval/build_dataset.py                    # 重建 eval/dataset.jsonl（300 条 + 稀有类别补样，幂等）
     python eval/build_dataset.py --stats            # 只看现有数据集画像（级别/类别支持数/格式）
     python eval/build_dataset.py --check-overlap    # 只报告与训练集的重复情况
     python eval/build_dataset.py --stress            # 额外拉 weibo NER 构造压力集（200 条）
     python eval/build_dataset.py --stress-only
 
 产物：
-- `eval/dataset.jsonl`：主评测集（策展 75 + 生成 225 = 300 条）
+- `eval/dataset.jsonl`：主评测集（策展 75 + 生成 225 = 300 条，再按 `RARE_TYPE_TARGETS` 补稀有类别）
 - `eval/ner_stress.jsonl`：自由文本压力集（公开语料 weibo_ner 抽样，200 条）
 """
 
@@ -327,6 +327,104 @@ def _safe_family(rng: random.Random, i: int) -> tuple[str, list[EntityType], str
 
 EXTRA_FAMILIES = {"L3": _l3_family, "L2": _l2_family, "L1": _l1_family, "SAFE": _safe_family}
 
+# ---------------------------------------------------------------- 稀有类别补样
+# 级别够 60 条不代表"每个类别都够测"：bank_card / medical / ip 原先只有 18/17/4 条，
+# 单类别指标没有统计意义，这里按类别支持数下限再补一批（补完总量会略超 300）。
+RARE_TYPE_TARGETS = {"bank_card": 30, "medical": 30, "ip": 30}
+
+
+def _rare_family(rng: random.Random, kind: str, i: int) -> tuple[str, list[EntityType], str, str]:
+    """为一个稀有类别造样本：每种 3 个模板，覆盖 text / json / csv / sql 格式。
+
+    模板里带上 `i`（补样序号）作为记录号，保证同模板多行内容不重复。
+    """
+    template = i % 3
+    if kind == "bank_card":
+        card = make_bank_card(rng)
+        holder = rng.choice(NAMES)
+        if template == 0:
+            return f"收款账户：{card}，开户人：{holder}，请核对后打款。", [EntityType.BANK_CARD, EntityType.NAME], "text", "稀有类别补样：银行卡（文本）"
+        if template == 1:
+            content = json.dumps({"account_no": card, "holder": holder, "bank": "示例银行"}, ensure_ascii=False)
+            return content, [EntityType.BANK_CARD, EntityType.NAME], "json", "稀有类别补样：银行卡（JSON）"
+        content = f"account_no,holder,bank\n{card},{holder},示例银行"
+        return content, [EntityType.BANK_CARD, EntityType.NAME], "csv", "稀有类别补样：银行卡（CSV）"
+    if kind == "medical":
+        patient = rng.choice(NAMES)
+        diagnosis = rng.choice(MEDICAL)
+        hospital = rng.choice(HOSPITALS)
+        if template == 0:
+            return f"门诊记录（编号 {i:04d}）：诊断：{diagnosis}，建议两周后复查。", [EntityType.MEDICAL], "text", "稀有类别补样：诊断字段（文本）"
+        if template == 1:
+            content = json.dumps({"patient": patient, "diagnosis": diagnosis, "hospital": hospital, "record_no": i}, ensure_ascii=False)
+            return content, [EntityType.MEDICAL, EntityType.NAME], "json", "稀有类别补样：病历 JSON"
+        content = f"update records set diagnosis='{diagnosis}' where patient='{patient}' and record_no={i};"
+        return content, [EntityType.MEDICAL, EntityType.NAME], "sql", "稀有类别补样：处方 SQL"
+    # ip：单独出现时权重只有 0.12（SAFE），因此这些样本是"有类别的安全样本"
+    octets = f"10.{rng.randint(0, 30)}.{rng.randint(0, 255)}.{rng.randint(1, 254)}"
+    if template == 0:
+        return f"内网主机 {octets} 正在同步日志（记录 {i:04d}），出口带宽正常。", [EntityType.IP], "text", "稀有类别补样：内网 IP（文本，SAFE）"
+    if template == 1:
+        content = json.dumps({"client_ip": octets, "action": "login", "result": "ok", "record_no": i}, ensure_ascii=False)
+        return content, [EntityType.IP], "json", "稀有类别补样：客户端 IP（JSON，SAFE）"
+    content = f"select * from audit where ip = '{octets}' and action = 'login' and record_no = {i};"
+    return content, [EntityType.IP], "sql", "稀有类别补样：审计 IP（SQL，SAFE）"
+
+
+def _type_counts(rows: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        for typ in row.get("types") or []:
+            counts[typ] = counts.get(typ, 0) + 1
+    return counts
+
+
+def generate_rare_rows(rows: list[dict], *, seed: int = 2026, start_idx: int = 0) -> list[dict]:
+    """按 RARE_TYPE_TARGETS 补稀有类别样本；每次补当前缺口最大的那一类，直到全部达标。"""
+    rng = random.Random(seed + 7)
+    out: list[dict] = []
+    attempt = 0
+    while attempt < 400:
+        counts = _type_counts(rows + out)
+        deficit = {
+            typ: target - counts.get(typ, 0)
+            for typ, target in RARE_TYPE_TARGETS.items()
+            if counts.get(typ, 0) < target
+        }
+        if not deficit:
+            break
+        kind = max(deficit, key=lambda key: deficit[key])
+        content, entities, fmt, note = _rare_family(rng, kind, attempt)
+        attempt += 1
+        gold, types = gold_level(entities)
+        if kind not in types:  # 模板与规则口径不一致时跳过，避免"标了却没检测到"
+            continue
+        if content in {row["content"] for row in out}:
+            continue
+        out.append(
+            {
+                "id": f"{GEN_PREFIX}{start_idx + len(out) + 1:03d}",
+                "format": fmt,
+                "content": content,
+                "level": gold,
+                "types": types,
+                "note": note,
+                "source": "generated",
+            }
+        )
+    counts = _type_counts(rows + out)
+    missing = {
+        typ: target - counts.get(typ, 0)
+        for typ, target in RARE_TYPE_TARGETS.items()
+        if counts.get(typ, 0) < target
+    }
+    if missing:
+        raise SystemExit(f"稀有类别补样不足：{missing}，请检查 RARE_TYPE_TARGETS 与规则口径")
+    if len({_digest(row["content"]) for row in out}) != len(out):
+        raise SystemExit("稀有类别补样出现内容重复，请检查模板里的随机源")
+    return out
+
+
 
 def generate_extra_rows(deficit: dict[str, int], *, seed: int = 2026, start_idx: int = 0) -> list[dict]:
     """按级别缺口生成样本；模板折算出的级别与目标级别不一致时跳过，避免金标漂移。"""
@@ -383,6 +481,7 @@ def dataset_stats(rows: list[dict]) -> dict:
         "by_source": dict(sorted(by_source.items(), key=lambda item: -item[1])),
         "unique_ids": len({row["id"] for row in rows}),
         "unique_contents": len({_digest(row["content"]) for row in rows}),
+        "rare_targets": dict(RARE_TYPE_TARGETS),
     }
 
 
@@ -396,6 +495,7 @@ def render_stats(stats: dict) -> str:
         f"| 格式 | {' / '.join(f'{k} {v}' for k, v in stats['by_format'].items())} |",
         f"| 来源 | {' / '.join(f'{k} {v}' for k, v in stats['by_source'].items())} |",
         f"| 类别支持数 | {' / '.join(f'{k} {v}' for k, v in stats['by_type'].items())} |",
+        f"| 稀有类别下限 | {' / '.join(f'{k} ≥{v}' for k, v in stats.get('rare_targets', {}).items())} |",
     ]
     return "\n".join(lines)
 
@@ -652,8 +752,13 @@ def build_dataset(*, keep_curated: bool = True, seed: int = 2026) -> tuple[list[
         if missing:
             raise SystemExit(f"评测集未补齐到目标规模，缺：{missing}")
 
+    # 级别够了以后再补稀有类别：避免"每级 60+ 条但 bank_card 只有 18 条"
+    rare = generate_rare_rows(rows, seed=seed, start_idx=len(rows))
+    _add(rare)
+
     rows = _dedupe_ids(rows)
     stats = dataset_stats(rows)
+    stats["rare_boost"] = len(rare)
     stats["curated"] = sum(1 for row in rows if str(row.get("id", "")).startswith(CURATED_PREFIXES))
     stats["generated"] = stats["total"] - stats["curated"]
     return rows, stats
@@ -681,7 +786,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.stress_only:
         rows, stats = build_dataset(seed=args.seed)
         write_jsonl(DATASET, rows)
-        print(f"[dataset] 写入 {DATASET}：{stats['total']} 条（策展 {stats['curated']} + 生成 {stats['generated']}）")
+        print(
+            f"[dataset] 写入 {DATASET}：{stats['total']} 条"
+            f"（策展 {stats['curated']} + 生成 {stats['generated']}，其中稀有类别补样 {stats.get('rare_boost', 0)} 条）"
+        )
         print(render_stats(stats))
         if training.is_file():
             overlap, total = count_overlap(rows, training)
