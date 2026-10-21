@@ -54,6 +54,8 @@ server/eval/latest.json
 server/eval/_*.json
 # L2 训练产物（权重不提交）
 server/l2_models/
+server/l3_models/
+server/data/l3_training.jsonl
 
 # 前端（Vue3 + Vite）
 web/node_modules/
