@@ -602,13 +602,19 @@ powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 模型权重**不打进 exe**（这是体积能压到 50 MB 的原因）：把 `l2_models/`、`models/` 放到 **exe 同级目录**即可被自动识别；
 没有权重也能启动，链路自动降级为 L1-only（`degraded=true`）。
 
-在桌面放双击入口（「启动」和「停止」两个快捷方式，起始位置会自动指向 exe 目录）：
+在桌面放双击入口（「启动」和「停止」两个快捷方式）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1            # 桌面「FlowMask」
 powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1 -Mode stop  # 桌面「FlowMask 停止」
 # 自定义名字/路径：-ExePath D:\tools\FlowMask.exe -Name "FlowMask 演示"
 ```
+
+两个快捷方式都通过 `cmd.exe` 调用 `scripts\start_flowmask.cmd` / `scripts\stop_flowmask.cmd` 中转：
+启动脚本负责把工作目录切到 exe 目录（onefile 解包目录 `.flowmask-tmp` 是相对工作目录的，切错会闪退）
+再用 `start` 脱离控制台，所以黑框一闪即关；停止脚本内部是 `FlowMask.exe --stop`。
+这样每条链路都能在命令行里原样复现，排查时不用猜「双击到底执行了什么」。
+也可以不走快捷方式，直接双击 `dist_exe\FlowMask.exe`（它自己会挑端口、开窗口）。
 
 停止有两条路，都不需要去找进程管理器：
 
