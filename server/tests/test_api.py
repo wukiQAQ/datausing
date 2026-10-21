@@ -227,7 +227,7 @@ def test_health_reports_ner_availability(client) -> None:
 
 
 def test_detect_enable_ner_switch(client, monkeypatch) -> None:
-    """enable_ner 只在显式打开时生效：打开后补出人名，关闭时保持纯 L1 结果。"""
+    """enable_ner 只在显式打开时生效：打开后补出地名，关闭时保持纯 L1 结果。"""
     from app.api import deps
     from app.identify.ner import NerSpan
     from app.identify.pipeline import DetectionPipeline
@@ -239,19 +239,21 @@ def test_detect_enable_ner_switch(client, monkeypatch) -> None:
             return True
 
         def detect(self, text: str) -> list[NerSpan]:
-            start = text.find("张三")
-            return [NerSpan(start=start, end=start + 2, label="B-PER")] if start >= 0 else []
+            start = text.find("福州")
+            return [NerSpan(start=start, end=start + 2, label="B-LOC")] if start >= 0 else []
 
     monkeypatch.setattr(deps, "_pipeline", DetectionPipeline(ner=FakeNer()))  # type: ignore[arg-type]
-    text = "张三昨天从福州赶过来，商量下季度的方案。"
+    # 这句 L1 抓不到：地名没有省/市/区/路的完整层级，只有 NER 能补出来。
+    text = "他昨天从福州赶过来，商量下季度的方案。"
 
     plain = client.post("/api/v1/detect", json={"text": text}).json()
     assert plain["findings"] == []
 
     with_ner = client.post("/api/v1/detect", json={"text": text, "enable_ner": True}).json()
-    assert with_ner["findings"], "开 NER 后应该补出姓名"
+    assert with_ner["findings"], "开 NER 后应该补出地名"
     finding = with_ner["findings"][0]
-    assert "name" in finding["types"]
-    span = next(item for item in finding["spans"] if item["type"] == "name")
-    assert text[span["start"] : span["end"]] == "张三"
+    assert "address" in finding["types"]
+    span = next(item for item in finding["spans"] if item["type"] == "address")
+    assert text[span["start"] : span["end"]] == "福州"
     assert "ner" in finding["model_chain"]
+

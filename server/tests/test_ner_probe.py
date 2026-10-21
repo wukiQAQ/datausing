@@ -41,9 +41,10 @@ def test_run_probe_with_fake_detector_improves_recall() -> None:
     assert summary["with_ner_hits"] > summary["without_ner_hits"]
     assert summary["with_ner_recall"] > summary["without_ner_recall"]
 
-    # 纯叙述、没有字段名的样本必须被 NER 救回来
+    # 纯叙述、没有字段名的样本：L1 只能抓到句首人名（新增 free-text 规则），
+    # 地址仍然只有 NER 能补 —— 这正是「L1 兜不住自由文本」的证据。
     first = rows[0]
-    assert "name" in first.with_ner and "name" not in first.without_ner
+    assert "address" in first.with_ner and "address" not in first.without_ner
     assert first.improved is True
 
 

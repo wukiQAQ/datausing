@@ -72,6 +72,46 @@ def test_medical_english_key_is_detected() -> None:
     assert not [hit for hit in detect("autodiagnosis enabled") if hit.type is EntityType.MEDICAL]
 
 
+def test_free_text_name_without_field_key() -> None:
+    """自由文本里没有「姓名：」字段名，也要靠姓氏 + 上下文把裸人名捞出来。"""
+    cases = {
+        "萧亚轩反馈仓库这周需要补货，回程车票已改签到周日。": "萧亚轩",  # 句首 + 动作
+        "这份材料由魏民整理，周五前要发出去。": "魏民",  # 「由…整理」动作句式
+        "评审意见里提到要请金秀贤补充一下预算说明。": "金秀贤",  # 「请…补充」
+        "客户王小明办理了宽带新装业务。": "王小明",  # 角色词 + 姓名
+    }
+    for text, want in cases.items():
+        hits = [hit for hit in detect(text) if hit.type is EntityType.NAME]
+        assert hits, f"自由文本人名没有识别：{text}"
+        assert hits[0].value == want, f"{text} 抓到 {hits[0].value}"
+        assert hits[0].rule.startswith("name_free")
+
+
+def test_free_text_name_does_not_fire_on_common_words() -> None:
+    """姓氏表 + 停用字只是启发式，普通词不能被人名规则误抓。"""
+    cases = [
+        "系统反馈接口超时，请稍后重试。",
+        "本周服务可用率 99.9%，暂无异常。",
+        "季度报表已提交财务审核。",
+        "会议地点 3 楼会议室，请按时参加。",
+    ]
+    for text in cases:
+        names = [hit for hit in detect(text) if hit.type is EntityType.NAME]
+        assert not names, f"{text} 被人名规则误报：{[hit.value for hit in names]}"
+
+
+def test_free_text_address_without_field_key() -> None:
+    """叙述句里的完整住址（省/市 + 区 + 路/街 + 号）应当被 address_free 抓到。"""
+    text = "他住在北京市海淀区中关村大街 1 号，平时不在家。"
+    result = analyze(text)
+    assert result.types and EntityType.ADDRESS in result.types
+    assert result.level is Level.LOW  # 地址单独出现是中低危，不该被抬成中危
+    hit = next(hit for hit in result.hits if hit.rule == "address_free")
+    # 捕获组只含地址本身：不出「住在」这类前缀，且吃到门牌号
+    assert hit.value.startswith("北京市海淀区中关村大街")
+    assert "号" in hit.value and "住在" not in hit.value
+
+
 def test_detect_name_kv_uses_group() -> None:
     hits = detect("姓名：张三")
     assert hits and hits[0].type == EntityType.NAME and hits[0].value == "张三"
