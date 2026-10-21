@@ -78,3 +78,7 @@ server/FlowMask-error.txt
 server/logs/
 # 打包时的临时构建目录（build_exe.ps1 用）
 /_build_tmp/
+
+# PyInstaller onefile 解包临时目录
+.flowmask-tmp/
+server/.flowmask-tmp/

@@ -77,7 +77,11 @@ exe = EXE(
     strip=False,
     upx=False,
     upx_exclude=[],
-    runtime_tmpdir=None,
+    # 解包临时目录固定到「当前工作目录下的 .flowmask-tmp」：
+    # 有的机器 %TEMP% 不可写（或被杀软/权限策略限制），onefile 会直接报
+    # Could not create temporary directory 而闪退；相对路径可让快捷方式
+    # 在工作目录=exe 目录时把它落在 exe 旁边，保证双击可用。
+    runtime_tmpdir=".flowmask-tmp",
     console=False,  # 双击后不弹黑窗；日志写 %LOCALAPPDATA%\FlowMask\logs\desktop.log
     disable_windowed_traceback=False,
     argv_emulation=False,

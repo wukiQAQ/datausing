@@ -602,6 +602,19 @@ powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 模型权重**不打进 exe**（这是体积能压到 50 MB 的原因）：把 `l2_models/`、`models/` 放到 **exe 同级目录**即可被自动识别；
 没有权重也能启动，链路自动降级为 L1-only（`degraded=true`）。
 
+在桌面放一个双击入口（快捷方式的「起始位置」会自动指向 exe 目录）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+# 自定义名字/路径：-ExePath D:\tools\FlowMask.exe -Name "FlowMask 演示"
+```
+
+> **为什么解包目录固定在 exe 旁边**：onefile 启动时要先把自身解压到一个临时目录，默认用 `%TEMP%`。
+> 有的机器 `%TEMP%` 被安全软件/组策略限制不可写，会报 `Could not create temporary directory` 直接闪退；
+> 因此 `flowmask.spec` 把 `runtime_tmpdir` 固定为**相对路径** `.flowmask-tmp`（相对于工作目录），
+> 快捷方式把起始位置设成 exe 目录后，解包就落在 `dist_exe\.flowmask-tmp\`，稳定可写。
+> 如果手动用命令行启动，请在 exe 所在目录下执行（或把 `%TEMP%` 指到一个可写目录）。
+
 已知边界：exe 只跑**主服务**；L2/L3/NER 的 torch/onnxruntime 推理仍以 Python 进程单独启动（`python -m l2_service`），
 以免把 CUDA/驱动版本耦合进 exe。打包用 PyInstaller（`flowmask.spec`），**不需要** Rust/Node 运行时。
 
