@@ -81,16 +81,16 @@ python -m app.evaluate --enable-l2 --enable-l3
 
 | 指标 | L1 only | L1 + L2（真模型） | L1 + L2 + L3 |
 | --- | ---: | ---: | ---: |
-| 分级准确率 | 94.0% | **99.7%** | **99.7%** |
-| 分级 Macro-F1 | 0.944 | 0.997 | 0.997 |
-| 类别 Micro-F1 | 0.864 | 0.864 | 0.864 |
+| 分级准确率 | 94.3% | **100.0%** | **100.0%** |
+| 分级 Macro-F1 | 0.946 | 1.000 | 1.000 |
+| 类别 Micro-F1 | 0.888 | 0.888 | 0.888 |
 | 高危漏检率 | 0.0% | 0.0% | 0.0% |
 | 安全误报率 | 20.8% | **0.0%** | **0.0%** |
-| p95 时延 | 0.07 ms | 60.9 ms | 1029.6 ms |
+| p95 时延 | 0.12 ms | 61.8 ms | 1047.6 ms |
 
-- 唯一剩下的分级错误 1 条：base64 编码的联系方式（L1 不解析编码，属 L2/L3 或解码插件职责）；
+- 主集已无分级错误（此前唯一一条 base64 编码联系方式由 3.0.2 的解码复核修好，L1 即可判对）；
 - L3 在 351 条上**不改变分级**（默认「只升不降 + 封顶 L2」），只贡献解释与证据；
-- NER 开关（`--enable-ner`，需 `models/bert4ner`）：主集准确率不变（99.7%）、类别 Micro-F1 **0.864 → 0.954**
+- NER 开关（`--enable-ner`，需 `models/bert4ner`）：主集准确率不变（100.0%）、类别 Micro-F1 **0.888 → 0.955**
   （多出若干 FP 类别）、L1 列 p95 0.07 → 71.4 ms；
   **压力集纯 L1 52.5% / 0.634（新增 L1 自由文本规则后）→ 开 NER 90.0% / 0.942**（P 1.000 / R 0.881）、p95 29.7 ms。
 
@@ -98,7 +98,7 @@ python -m app.evaluate --enable-l2 --enable-l3
 
 ```powershell
 cd server
-python eval/build_dataset.py                     # 重建主集 300 + 压力集 200（可复现）
+python eval/build_dataset.py                     # 重建主集 351 + 压力集 200（可复现）
 python eval/build_dataset.py --stats             # 只看画像：级别 / 类别支持数 / 格式
 python -m app.evaluate --compare-l2 --compare-l3 `
   --l2-endpoint http://127.0.0.1:8091/v1/classify `
