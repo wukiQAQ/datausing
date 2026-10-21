@@ -64,15 +64,25 @@ if ($Mode -eq "stop") {
 
 if (-not $Name) { $Name = "FlowMask" }
 if (-not $Description) { $Description = "FlowMask · 分级脱敏与审计溯源系统（双击启动，自动打开界面）" }
+# 启动通过 scripts\start_flowmask.cmd 中转：
+# - 由它把工作目录切到 exe 目录（onefile 解包目录 .flowmask-tmp 相对工作目录，错了会闪退）；
+# - 用 start 脱离控制台，黑框一闪即关，用户只看到应用窗口；
+# - 快捷方式本身只依赖 cmd.exe，行为在任何 Windows 会话里都可复现/可验证。
+$startCmd = Join-Path $serverDir "scripts\start_flowmask.cmd"
+if (-not (Test-Path -LiteralPath $startCmd)) {
+    throw "找不到启动脚本：$startCmd"
+}
 $lnkPath = Join-Path $desktop "$Name.lnk"
 $shortcut = $shell.CreateShortcut($lnkPath)
-$shortcut.TargetPath = $exeFull
+$shortcut.TargetPath = Join-Path $env:SystemRoot "System32\cmd.exe"
+$shortcut.Arguments = "/c `"`"$startCmd`"`""
 $shortcut.WorkingDirectory = $exeDir
 $shortcut.IconLocation = "$exeFull,0"
 $shortcut.Description = $Description
-$shortcut.WindowStyle = 1
+# 7 = 最小化：中转脚本约 0.2 秒就退出，不让黑框抢焦点
+$shortcut.WindowStyle = 7
 $shortcut.Save()
 
 Write-Output "已创建启动快捷方式：$lnkPath"
-Write-Output "  目标：$exeFull"
+Write-Output "  目标：$startCmd"
 Write-Output "  起始位置：$exeDir"

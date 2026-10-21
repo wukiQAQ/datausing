@@ -15,7 +15,7 @@ if errorlevel 1 (
   echo.
   echo FlowMask: stopped.
 )
-echo Log: %%LOCALAPPDATA%%\FlowMask\run\last-stop.txt
+echo Result log: dist_exe\run\last-stop.txt  (or %%LOCALAPPDATA%%\FlowMask\run\last-stop.txt)
 rem ping instead of timeout: timeout needs a real console stdin and fails when piped.
 ping -n 4 127.0.0.1 >nul
 exit /b 0

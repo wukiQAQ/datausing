@@ -220,3 +220,16 @@ def test_stop_shortcut_script_exists() -> None:
     creator = (scripts / "create_shortcut.ps1").read_text(encoding="utf-8-sig")
     assert "ValidateSet(\"start\", \"stop\")" in creator
     assert "FlowMask 停止" in creator
+
+
+def test_start_shortcut_uses_cmd_launcher() -> None:
+    """启动快捷方式走 cmd 中转：切工作目录 + start 脱离控制台，行为可复现。"""
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    start_cmd = (scripts / "start_flowmask.cmd").read_text(encoding="utf-8", errors="ignore")
+    assert "cd /d" in start_cmd
+    assert "start \"\"" in start_cmd
+    assert "dist_exe" in start_cmd
+    creator = (scripts / "create_shortcut.ps1").read_text(encoding="utf-8-sig")
+    assert "start_flowmask.cmd" in creator
+    # 启动/停止两个快捷方式都应通过 cmd.exe 调用脚本，而不是直接指向 exe
+    assert creator.count("System32\\cmd.exe") >= 2
