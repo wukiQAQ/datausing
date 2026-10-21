@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 文本/JSON/CSV/SQL/Word/PDF 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量；Word 段落 `p{n}` / 表格 `table{表}.{行}.{列}`；PDF 按页 `page{n}`（依赖可选 `pdfplumber`） |
 | pcap 流量导入（服务端） | ✅ | 上传 pcap/pcapng → TCP 重组 + HTTP 请求解析 → 每个正文当一个片段，复用同一套识别/分级/脱敏/任务/审计；`GET /traffic/sample` 提供自带示例（`samples/demo-traffic.pcap`）；HTTPS、压缩体与分块传输暂不解析 |
-| 实时旁路（跟随 pcap 文件） | ✅ | 服务端持续跟随一个不断增长的 pcap（由 dumpcap/Wireshark/自研采集器写），按「落库窗口」把新正文汇总成检测任务；`/traffic/live*` 管理会话，演示脚本 `samples/simulate_live_traffic.py`；只支持经典 pcap |
+| 实时旁路（跟随抓包文件） | ✅ | 服务端持续跟随一个不断增长的抓包文件（由 dumpcap/Wireshark/自研采集器写），按「落库窗口」把新正文汇总成检测任务；**pcap 与 pcapng 都支持**（dumpcap 默认写 pcapng）；`/traffic/live*` 管理会话，演示脚本 `samples/simulate_live_traffic.py` |
 | L1 规则识别 | ✅ | 17 条规则（含 4 条自由文本）+ 省/市地名库补白 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验；另加编码载荷解码复核（base64 / URL-safe / hex / 百分号，两层嵌套） |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
@@ -387,7 +387,7 @@ curl.exe -s -X POST http://127.0.0.1:8090/api/v1/traffic/live/start ^
 真实场景把 `pcap_path` 指向 dumpcap 的滚动输出即可，例如：
 
 ```powershell
-dumpcap -i 1 -w data/live.pcap -b filesize:10240
+dumpcap -i 1 -w data/live.pcapng -b filesize:10240   # pcapng 同样是支持的格式
 ```
 
 语义与边界：
@@ -395,7 +395,9 @@ dumpcap -i 1 -w data/live.pcap -b filesize:10240
 - **窗口 = 一个任务**：`window_s` 到了就把这段时间新出现的正文汇总成一个检测任务，结果自动进「任务与审计链」「统计看板」，审计链照常逐条追加；
 - **去重**：同一 HTTP 请求（方法+路径+正文）只检测一次，跨窗口重复的握手/重传不会重复报；
 - **延迟**：最坏 = `interval_ms` + `window_s`，默认约 2.5 s；
-- **不支持的**：pcapng 实时跟随（用文件导入）、HTTPS 密文、压缩体、分块传输；
+- **容器格式**：经典 pcap 与 pcapng 都支持（`dumpcap`/Wireshark 默认导出 pcapng）；pcapng 按块增量解析，
+  支持 SHB / IDB / EPB / SPB 与大小端，接口链路类型不是以太网时跳过；
+- **不支持的**：HTTPS 密文、压缩体、分块传输；
 - **权限**：只允许跟随 `data_dir` 下的文件（默认 `data/`），避免任意文件读取。
 
 ## 7. 配置（环境变量）
@@ -457,7 +459,7 @@ server/
       frames.py        以太网/IP/TCP/UDP → Frame（载荷定位）
       streams.py       会话聚合（TCP 重组）+ HTTP 正文拆分 + 内容类型识别
       importer.py      抓包 → Document（复用解析/识别/任务链路）
-      live.py          实时旁路：增量跟随 pcap 文件 + 窗口落库
+      live.py          实时旁路：增量跟随 pcap/pcapng 文件 + 窗口落库
   l2_service/          L2 语义推理服务（mock / onnx 后端 + /v1/classify）
   l2_training/         自举数据集、弱标注、微调脚本
 l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权重合并
@@ -465,7 +467,7 @@ l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（351 条主集 + 200 条 NER 压力集）与评测说明
-  tests/               305 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路、NER 探针、地名库、部署脚本
+  tests/               309 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路（pcap/pcapng）、NER 探针、地名库、部署脚本
   pyproject.toml
   requirements.txt     运行依赖（固定版本）
   requirements-ml.txt  可选：L2/L3/NER/训练与导出
