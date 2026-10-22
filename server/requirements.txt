@@ -12,3 +12,7 @@ pydantic==2.14.1
 python-multipart==0.0.32
 # Word/PDF 解析用到（PDF 走 pdfplumber；docx 是自研 zip+XML，不依赖 python-docx）
 pdfplumber==0.11.10
+# L1 敏感词表（三级知识库 YAML + Aho-Corasick）
+# pyyaml 必装；pyahocorasick 可选：装了走 C 扩展（词表大时更快），没装会自动退回同语义的纯 Python 实现
+pyyaml==6.0.3
+pyahocorasick==2.3.1

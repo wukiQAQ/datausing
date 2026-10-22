@@ -28,6 +28,7 @@ from .api.routes_audit import router as audit_router
 from .api.routes_detect import router as detect_router
 from .api.routes_findings import router as findings_router
 from .api.routes_health import router as health_router
+from .api.routes_keywords import router as keywords_router
 from .api.routes_dynamic import router as dynamic_router
 from .api.routes_preferences import router as preferences_router
 from .api.routes_rules import router as rules_router
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_token)])
     for sub in (
         health_router,
+    keywords_router,
         detect_router,
         tasks_router,
         traffic_router,

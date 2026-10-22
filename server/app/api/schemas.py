@@ -23,6 +23,7 @@ class DetectRequest(BaseModel):
     enable_l3: bool = Field(default=False, description="是否启用 L3 本地大模型复核（需 Ollama 在线）")
     # None = 跟服务端默认（FLOWMASK_ENABLE_NER）；显式 true/false 按本次请求
     enable_ner: bool | None = Field(default=None, description="是否启用 L1.5 实体识别（人名/地址，适合自由文本）")
+    enable_keywords: bool | None = Field(default=None, description="是否启用 L1 敏感词表（法规/行业/企业三级知识库）；None=跟随服务端默认（开）")
     mask_level: str | None = Field(default=None, description="强制按该级别脱敏；空表示按实际级别")
     min_level: str = Field(default="SAFE", description="只返回 ≥ 该级别的结果（SAFE/L1/L2/L3）")
 
@@ -192,12 +193,34 @@ class VerifyOut(BaseModel):
     head_hash: str
 
 
+class KeywordTermOut(BaseModel):
+    """一条敏感词：term 是词本身，tier 表示它来自哪一级知识库。"""
+
+    term: str
+    category: str
+    tier: str = Field(description="regulatory / industry / enterprise")
+    weight: float
+    confidence: float
+
+
+class KeywordsOut(BaseModel):
+    """当前生效的敏感词表。"""
+
+    total: int = Field(description="本次过滤后的条数")
+    all_total: int = Field(description="词表总条目数")
+    tiers: dict[str, int] = {}
+    terms: list[KeywordTermOut] = []
+
+
 class HealthOut(BaseModel):
     status: str
     version: str
     db_path: str
     enable_l2: bool
     enable_l3: bool
+    # L1 敏感词表：当前加载的条目数与三级分布
+    keywords: int = 0
+    keyword_tiers: dict[str, int] = {}
     # L1.5 是否可用（模型加载成功），供前端决定是否显示「自由文本模式」
     ner: bool = False
     ner_backend: str = ""
