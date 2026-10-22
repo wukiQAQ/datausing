@@ -79,6 +79,19 @@ export const api = {
   liveStart: (payload) => request("/traffic/live/start", jsonBody(payload)),
   liveStop: (liveId) => request(`/traffic/live/${liveId}/stop`, { method: "POST" }),
   liveClear: () => request("/traffic/live", { method: "DELETE" }),
+
+  // 批量检测：一次上传多个文件，每个文件一个任务（坏文件不会拖垮整批）
+  batchTasks: (files, opts = {}) => {
+    const fd = new FormData();
+    for (const file of files) fd.append("files", file);
+    const qs = new URLSearchParams();
+    if (opts.enableL2) qs.set("enable_l2", "true");
+    if (opts.enableL3) qs.set("enable_l3", "true");
+    if (opts.enableNer) qs.set("enable_ner", "true");
+    if (opts.maskLevel && opts.maskLevel !== "auto") qs.set("mask_level", opts.maskLevel);
+    if (opts.minLevel) qs.set("min_level", opts.minLevel);
+    return request(`/tasks/batch?${qs.toString()}`, { method: "POST", body: fd });
+  },
 };
 
 export const LEVEL_COLORS = { L3: "#dc2626", L2: "#ea580c", L1: "#d97706", SAFE: "#0d9488" };

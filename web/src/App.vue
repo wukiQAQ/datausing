@@ -2,14 +2,17 @@
 import { computed, onMounted, ref } from "vue";
 import DetectView from "./views/DetectView.vue";
 import TasksView from "./views/TasksView.vue";
+import BatchView from "./views/BatchView.vue";
 import StatsView from "./views/StatsView.vue";
 import RulesView from "./views/RulesView.vue";
 import DynamicView from "./views/DynamicView.vue";
 import TrafficView from "./views/TrafficView.vue";
 import { api } from "./api";
+import { theme, toggleTheme } from "./theme";
 
 const tabs = [
   { key: "detect", label: "即时检测 · 左右对照", comp: DetectView },
+  { key: "batch", label: "批量检测 · 多文件", comp: BatchView },
   { key: "traffic", label: "流量导入 · pcap", comp: TrafficView },
   { key: "tasks", label: "任务与审计链", comp: TasksView },
   { key: "stats", label: "统计看板", comp: StatsView },
@@ -22,6 +25,13 @@ const active = ref(tabs.some((tab) => tab.key === hashTab) ? hashTab : 'detect')
 const current = computed(() => (tabs.find((t) => t.key === active.value) || tabs[0]).comp);
 const health = ref(null);
 const healthError = ref("");
+
+const isDark = computed({
+  get: () => theme.value === "dark",
+  set: (value) => {
+    if ((value ? "dark" : "light") !== theme.value) toggleTheme();
+  },
+});
 
 function selectTab(key) {
   active.value = key;
@@ -41,13 +51,20 @@ onMounted(async () => {
   <el-container class="layout">
     <el-header class="topbar">
       <div class="brand">FlowMask<span>分级脱敏与审计溯源 · 本地一体机（数据不出机）</span></div>
-      <div class="status">
-        <template v-if="health">
-          v{{ health.version }} · 运行 {{ health.uptime_s }}s · L2 {{ health.enable_l2 ? "已启用" : "未启用" }} ·
-          L3 {{ health.enable_l3 ? "已启用" : "未启用" }}
-        </template>
-        <template v-else-if="healthError">服务未连接：{{ healthError }}</template>
-        <template v-else>正在连接服务…</template>
+      <div class="topbar-right">
+        <div class="status">
+          <template v-if="health">
+            v{{ health.version }} · 运行 {{ health.uptime_s }}s · L2 {{ health.enable_l2 ? "已启用" : "未启用" }} ·
+            L3 {{ health.enable_l3 ? "已启用" : "未启用" }}
+          </template>
+          <template v-else-if="healthError">服务未连接：{{ healthError }}</template>
+          <template v-else>正在连接服务…</template>
+        </div>
+        <!-- 主题：跟随系统首屏，手动切换后记住选择（localStorage） -->
+        <div class="theme-toggle" :title="isDark ? '切换到浅色模式' : '切换到深色模式'">
+          <span>{{ isDark ? "🌙" : "☀️" }}</span>
+          <el-switch v-model="isDark" size="small" active-text="深色" inactive-text="浅色" />
+        </div>
       </div>
     </el-header>
     <el-container>

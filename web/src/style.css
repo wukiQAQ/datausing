@@ -1,9 +1,41 @@
 :root {
+  color-scheme: light;
+  /* 浅色主题（默认） */
   --ink: #0f172a;
   --accent: #0d9488;
   --muted: #64748b;
   --border: #e2e8f0;
   --bg: #f6f8fb;
+  --panel: #ffffff;
+  --pane-head: #f8fafc;
+  --mark-bg: #fef08a;
+  --mark-ink: #111827;
+  --topbar-from: #0f172a;
+  --topbar-to: #134e4a;
+  --topbar-ink: #ffffff;
+  --topbar-sub: #99f6e4;
+  --status: #cbd5e1;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+html.dark {
+  color-scheme: dark;
+  /* 深色主题：只在这里换值，组件与页面都吃同一套变量 */
+  --ink: #e5edf7;
+  --accent: #2dd4bf;
+  --muted: #94a3b8;
+  --border: #2b3a52;
+  --bg: #0b1220;
+  --panel: #111c2e;
+  --pane-head: #16243a;
+  --mark-bg: #facc15;
+  --mark-ink: #111827;
+  --topbar-from: #060d18;
+  --topbar-to: #042f2c;
+  --topbar-ink: #f1f5f9;
+  --topbar-sub: #5eead4;
+  --status: #94a3b8;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -17,14 +49,21 @@ body,
   margin: 0;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .layout {
   height: 100%;
+  background: var(--bg);
+  color: var(--ink);
 }
 
 .topbar {
@@ -32,8 +71,8 @@ body {
   align-items: center;
   justify-content: space-between;
   height: 60px;
-  background: linear-gradient(90deg, #0f172a, #134e4a);
-  color: #fff;
+  background: linear-gradient(90deg, var(--topbar-from), var(--topbar-to));
+  color: var(--topbar-ink);
 }
 
 .brand {
@@ -46,34 +85,59 @@ body {
   margin-left: 12px;
   font-size: 13px;
   font-weight: 400;
-  color: #99f6e4;
+  color: var(--topbar-sub);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .status {
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--status);
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--status);
+  white-space: nowrap;
 }
 
 .side {
-  background: #fff;
+  background: var(--panel);
   border-right: 1px solid var(--border);
 }
 
 .side .el-menu {
   border-right: none;
+  /* 菜单自身背景交给主题变量，避免深色下出现一种额外底色 */
+  background: transparent;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--ink);
+  --el-menu-hover-bg-color: var(--pane-head);
+  --el-menu-active-color: var(--accent);
 }
 
 .main {
   padding: 18px;
   overflow: auto;
+  /* Element Plus 的 el-main 有自己的背景色，这里统一吃主题变量，避免深色下出现两种底色 */
+  background: var(--bg);
+  color: var(--ink);
 }
 
 .panel {
   margin-bottom: 16px;
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px 18px;
+  box-shadow: var(--shadow);
 }
 
 .panel-title {
@@ -101,13 +165,14 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--panel);
 }
 
 .pane-head {
   padding: 8px 12px;
   font-size: 12px;
   color: var(--muted);
-  background: #f8fafc;
+  background: var(--pane-head);
   border-bottom: 1px solid var(--border);
 }
 
@@ -123,8 +188,8 @@ body {
 }
 
 mark.hit {
-  background: #fef08a;
-  color: inherit;
+  background: var(--mark-bg);
+  color: var(--mark-ink);
   padding: 1px 2px;
   border-radius: 3px;
 }
@@ -148,7 +213,7 @@ mark.hit {
 .chip.pale {
   color: inherit;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--panel);
 }
 
 .toolbar {

@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import * as echarts from "echarts";
 import { ElMessage } from "element-plus";
 import { api, LEVEL_COLORS } from "../api";
+import { cssVar, watchTheme } from "../theme";
 
 const stats = ref(null);
 const pieEl = ref(null);
@@ -10,6 +11,7 @@ const barEl = ref(null);
 const histEl = ref(null);
 const charts = [];
 let resizeHandler = null;
+let stopWatchTheme = null;
 
 function ensureChart(el) {
   if (!el) return null;
@@ -21,9 +23,24 @@ function ensureChart(el) {
   return chart;
 }
 
+// ECharts 是 canvas 渲染，颜色取自当前主题变量；切换主题时重建图表
+function axisTheme() {
+  return {
+    text: cssVar("--ink", "#0f172a"),
+    muted: cssVar("--muted", "#64748b"),
+    border: cssVar("--border", "#e2e8f0"),
+  };
+}
+
+function disposeCharts() {
+  charts.forEach((chart) => chart.dispose());
+  charts.length = 0;
+}
+
 function render() {
   const data = stats.value;
   if (!data) return;
+  const palette = axisTheme();
 
   const pie = ensureChart(pieEl.value);
   if (pie) {
@@ -32,19 +49,20 @@ function render() {
       .map(([level, count]) => ({
         name: `${level}`,
         value: count,
-        itemStyle: { color: LEVEL_COLORS[level] || "#64748b" },
+        itemStyle: { color: LEVEL_COLORS[level] || palette.muted },
       }));
     pie.setOption(
       {
+        textStyle: { color: palette.text },
         tooltip: { trigger: "item" },
-        legend: { bottom: 0 },
+        legend: { bottom: 0, textStyle: { color: palette.muted } },
         series: [
           {
             type: "pie",
             radius: ["42%", "68%"],
             center: ["50%", "45%"],
-            label: { formatter: "{b}: {c} ({d}%)" },
-            data: rows.length ? rows : [{ name: "暂无数据", value: 1, itemStyle: { color: "#e2e8f0" } }],
+            label: { formatter: "{b}: {c} ({d}%)", color: palette.text },
+            data: rows.length ? rows : [{ name: "暂无数据", value: 1, itemStyle: { color: palette.border } }],
           },
         ],
       },
@@ -58,11 +76,21 @@ function render() {
     const counts = (data.by_type || []).map((item) => item.count ?? item.value ?? 0);
     bar.setOption(
       {
+        textStyle: { color: palette.text },
         tooltip: { trigger: "axis" },
         grid: { left: 42, right: 16, top: 24, bottom: 48 },
-        xAxis: { type: "category", data: rows, axisLabel: { rotate: 30 } },
-        yAxis: { type: "value" },
-        series: [{ type: "bar", data: counts, barMaxWidth: 34, itemStyle: { color: "#0d9488" } }],
+        xAxis: {
+          type: "category",
+          data: rows,
+          axisLabel: { rotate: 30, color: palette.muted },
+          axisLine: { lineStyle: { color: palette.border } },
+        },
+        yAxis: {
+          type: "value",
+          axisLabel: { color: palette.muted },
+          splitLine: { lineStyle: { color: palette.border } },
+        },
+        series: [{ type: "bar", data: counts, barMaxWidth: 34, itemStyle: { color: cssVar("--accent", "#0d9488") } }],
       },
       true
     );
@@ -73,10 +101,20 @@ function render() {
     const entries = Object.entries(data.score_histogram || {});
     hist.setOption(
       {
+        textStyle: { color: palette.text },
         tooltip: { trigger: "axis" },
         grid: { left: 42, right: 16, top: 24, bottom: 40 },
-        xAxis: { type: "category", data: entries.map(([key]) => key) },
-        yAxis: { type: "value" },
+        xAxis: {
+          type: "category",
+          data: entries.map(([key]) => key),
+          axisLabel: { color: palette.muted },
+          axisLine: { lineStyle: { color: palette.border } },
+        },
+        yAxis: {
+          type: "value",
+          axisLabel: { color: palette.muted },
+          splitLine: { lineStyle: { color: palette.border } },
+        },
         series: [
           {
             type: "bar",
@@ -104,12 +142,17 @@ onMounted(() => {
   load();
   resizeHandler = () => charts.forEach((chart) => chart.resize());
   window.addEventListener("resize", resizeHandler);
+  // 换主题时旧 canvas 颜色不会自动更新，干脆重建
+  stopWatchTheme = watchTheme(() => {
+    disposeCharts();
+    render();
+  });
 });
 
 onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
-  charts.forEach((chart) => chart.dispose());
-  charts.length = 0;
+  if (stopWatchTheme) stopWatchTheme();
+  disposeCharts();
 });
 </script>
 
