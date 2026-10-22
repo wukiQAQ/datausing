@@ -14,6 +14,7 @@
 # v2：一条命令跑起来（文档侧主链路）
 cd server && pip install -r requirements.txt
 scripts\start_local.cmd                       # 一键起（Windows；Linux/macOS 用 ./scripts/start_local.sh）
+server\scripts\demo.cmd                      # 一键演示：检测 / 流量 / 批量 / 动态脱敏 / 隐私导出 / 审计跑一遍
 powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1   # 打包 Windows 单文件 exe（双击即用）
 #   正式前端：cd ../web && npm install && npm run build → http://127.0.0.1:8090/app/
 #   零依赖单页：http://127.0.0.1:8090/ui/ （未构建前端时根路径自动回落到这里）

@@ -532,7 +532,7 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 
 见「2.1 一键启动」；下面只补充部署相关的约定。
 
-### 11.1 依赖清单（三个文件，按需装）
+### 12.1 依赖清单（三个文件，按需装）
 
 | 文件 | 内容 | 什么时候装 |
 | --- | --- | --- |
@@ -544,7 +544,7 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 `python scripts/download_models.py --list` 看清单、`--only l3 ner` 按需下载（见 11.5 节）；
 不下载也能跑，L2/L3/NER 关闭时链路自动降级为 L1-only 并标 `degraded`。
 
-### 11.2 环境变量与 `.env`
+### 12.2 环境变量与 `.env`
 
 ```powershell
 Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
@@ -553,7 +553,7 @@ Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
 全部变量见 `.env.example`（含默认值与注释）。演示最常改的三个开关：`FLOWMASK_ENABLE_L2`、
 `FLOWMASK_ENABLE_L3`、`FLOWMASK_ENABLE_NER`；`.env` 里留空的项会回落默认值（有测试覆盖）。
 
-### 11.3 启动脚本参数（`scripts/start_local.ps1` / `.sh`）
+### 12.3 启动脚本参数（`scripts/start_local.ps1` / `.sh`）
 
 | 参数（PowerShell） | 参数（bash） | 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -568,7 +568,7 @@ Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
 产物位置：`server/data/run/<name>.pid`、`<name>.log`、`<name>.err.log`；
 `stop_local` 按 pid 文件停止并清理记录。
 
-### 11.4 部署注意（答辩口径）
+### 12.4 部署注意（答辩口径）
 
 - **默认只监听回环**，模型与数据都在本机，满足「数据不出机」；对外暴露必须改 `FLOWMASK_API_TOKEN`
   与 `FLOWMASK_AUDIT_SECRET`（审计链密钥不要用示例值）。
@@ -578,7 +578,7 @@ Copy-Item .env.example .env     # 然后按需改；启动脚本会自动加载
   只是 L2/L3/NER 不参与（结果里 `degraded=true`）。
 - **Tauri 桌面打包未做**（需 Rust 工具链）；给评委的 Windows 单文件 exe 见 11.6，双击即用。
 
-### 11.5 按需下载模型权重（`scripts/download_models.py`）
+### 12.5 按需下载模型权重（`scripts/download_models.py`）
 
 权重不进仓库、也不打进 exe，用脚本按需拉取（本机 huggingface.co 不可直连，脚本默认走 ModelScope，
 NER 权重走 hf-mirror）：
@@ -603,7 +603,7 @@ python scripts/download_models.py --all --dest D:\FlowMask\models   # 自定义�
 依赖缺失时给出 `pip install` 提示并以退出码 2 结束，不会留下半个目录当“已下载”。
 L2 的 `l2_models/bert-sens-onnx` 是自训练产物、无法下载，需按 §3 重训导出或直接拷贝。
 
-### 11.6 打包 Windows 单文件 exe（双击即用）
+### 12.6 打包 Windows 单文件 exe（双击即用）
 
 前端已构建的前提下，一条命令得到 `server/dist_exe/FlowMask.exe`（约 50 MB）：
 
@@ -652,6 +652,28 @@ powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1 -Mode stop 
 
 已知边界：exe 只跑**主服务**；L2/L3/NER 的 torch/onnxruntime 推理仍以 Python 进程单独启动（`python -m l2_service`），
 以免把 CUDA/驱动版本耦合进 exe。打包用 PyInstaller（`flowmask.spec`），**不需要** Rust/Node 运行时。
+
+### 12.7 一键演示（答辩 / 评审现场）
+
+`server/scripts/demo.ps1`（Windows）与 `demo.sh`（Linux/macOS）只调用 HTTP 接口、不依赖 Python 依赖，
+按「健康检查 → 即时检测 → 任务 + 审计 → pcap 流量 → 批量检测 → 动态脱敏 → 隐私增强导出 → 审计校验 → 看板」
+的顺序跑一遍，逐项打印 `[OK]/[FAIL]`，末尾给出退出码（0 = 全通过）。
+
+```powershell
+# 先起服务（或双击桌面 FlowMask.exe），再跑演示
+cd server
+powershell -ExecutionPolicy Bypass -File scripts\demo.ps1            # 默认 http://127.0.0.1:8090
+scripts\demo.cmd                                                     # 等价包装（cmd 里也能直接跑）
+powershell -ExecutionPolicy Bypass -File scripts\demo.ps1 -BaseUrl http://127.0.0.1:18099 -NoBrowser
+.\scripts\demo.sh http://127.0.0.1:8090                              # Linux/macOS
+```
+
+常用参数：`-BaseUrl`、`-NoBrowser`、`-SkipTraffic`（没有 `samples/demo-traffic.pcap` 时跳过流量步骤）。
+脚本会用 `curl.exe` 传 pcap 与批量文件，临时文件写在系统临时目录并在结束时自动清理。
+
+**换机验证口径**：演示脚本不假设库里有旧数据，用**全新 `FLOWMASK_DATA_DIR` + 空库**跑通全部 8 步
+（本机实测：3 个会话 pcap 导入、批量 3 文件、审计链 11 条 `ok=true`、隐私导出 `total=1` 且
+`l_diversity.ok=false`（单条任务必然不足 `l`，符合定义））——即「新机器上只装依赖 + 起服务」就能复现。
 
 ## 13. 下一步
 
