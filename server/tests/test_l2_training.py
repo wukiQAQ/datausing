@@ -16,6 +16,7 @@ from l2_training import (
     SENSITIVE_LABELS,
     dry_run,
     from_eval_dataset,
+    from_weibo_ner,
     load_jsonl,
     make_bank_card,
     make_id_card,
@@ -172,3 +173,50 @@ def test_synthetic_hard_negatives() -> None:
         if ex.labels.get("bank_card") or ex.labels.get("secret") or ex.labels.get("id_card")
     ]
     assert hard, "缺少带敏感形态的困难负例"
+
+
+def _write_weibo_fixture(path: Path) -> None:
+    """造一份 mini weibo NER（OntoNotes 标注）：专名、代称、纯 O 各一条。"""
+    rows = [
+        {
+            "tokens": list("张伟在福州软件园上班"),
+            "tags": ["B-PER.NAM", "E-PER.NAM", "O", "B-GPE.NAM", "I-GPE.NAM", "E-GPE.NAM", "O", "O", "O", "O"],
+            "entities": [
+                {"start": 0, "end": 2, "type": "per.nam"},
+                {"start": 3, "end": 6, "type": "gpe.nam"},
+            ],
+        },
+        {
+            "tokens": list("老百姓都挺开心的"),
+            "tags": ["S-PER.NOM", "O", "O", "O", "O", "O", "O", "O"],
+            "entities": [{"start": 0, "end": 1, "type": "per.nom"}],
+        },
+        {
+            "tokens": list("今天天气不错适合出门"),
+            "tags": ["O"] * 9,
+            "entities": [],
+        },
+    ]
+    path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+
+
+def test_from_weibo_ner_maps_proper_nouns_only(tmp_path: Path) -> None:
+    """公开语料：只把专名映射成 name/address，代称（per.nom）与纯 O 句子不进训练集。"""
+    cache = tmp_path / "weibo.json"
+    _write_weibo_fixture(cache)
+    examples = from_weibo_ner(cache, limit=10)
+    assert len(examples) == 1, [ex.text for ex in examples]
+    sample = examples[0]
+    assert sample.source == "weibo-ner"
+    assert sample.labels["name"] is True
+    assert sample.labels["address"] is True
+    assert "老百姓" not in sample.text
+
+
+def test_from_weibo_ner_limit_and_missing_file(tmp_path: Path) -> None:
+    """条数上限生效；文件缺失时明确报错。"""
+    cache = tmp_path / "weibo.json"
+    _write_weibo_fixture(cache)
+    assert len(from_weibo_ner(cache, limit=0)) == 0
+    with pytest.raises(FileNotFoundError):
+        from_weibo_ner(tmp_path / "missing.json")

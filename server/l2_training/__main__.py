@@ -6,7 +6,13 @@ import argparse
 import json
 import sys
 
-from .dataset import from_eval_dataset, load_jsonl, synthetic_examples, write_jsonl
+from .dataset import (
+    from_eval_dataset,
+    from_weibo_ner,
+    load_jsonl,
+    synthetic_examples,
+    write_jsonl,
+)
 from .train import dry_run, train
 
 
@@ -17,6 +23,10 @@ def _cmd_dataset(args: argparse.Namespace) -> int:
         extra = from_eval_dataset(args.with_eval)
         examples.extend(extra)
         sources["eval"] = len(extra)
+    if args.with_weibo:
+        weibo = from_weibo_ner(args.with_weibo, limit=args.weibo_limit, seed=args.seed)
+        examples.extend(weibo)
+        sources["weibo-ner"] = len(weibo)
     path = write_jsonl(args.out, examples)
     print(json.dumps({"out": str(path), "total": len(examples), "sources": sources}, ensure_ascii=False))
     return 0
@@ -61,6 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--with-eval",
         default="",
         help="合并人工评测集（仅用于调参实验）；默认不合并，避免评测集泄漏进训练集",
+    )
+    dataset.add_argument(
+        "--with-weibo",
+        default="",
+        help="合并公开语料 weibo NER（JSON 数组，含 tokens/tags）；用它补叙述型自由文本的 name/address 正例",
+    )
+    dataset.add_argument(
+        "--weibo-limit", type=int, default=400, help="从公开语料里最多取多少句（默认 400）"
     )
     dataset.set_defaults(func=_cmd_dataset)
 

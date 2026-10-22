@@ -9,6 +9,7 @@
 from .dataset import (
     Example,
     from_eval_dataset,
+    from_weibo_ner,
     load_jsonl,
     make_bank_card,
     make_id_card,
@@ -27,6 +28,7 @@ __all__ = [
     "WeakLabel",
     "dry_run",
     "from_eval_dataset",
+    "from_weibo_ner",
     "load_jsonl",
     "make_bank_card",
     "make_id_card",

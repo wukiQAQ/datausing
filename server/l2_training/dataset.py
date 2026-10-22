@@ -297,6 +297,89 @@ def synthetic_examples(count: int = 800, seed: int = 42) -> list[Example]:
     return examples
 
 
+# weibo NER 的实体标注 -> 本项目的类别键。
+# 语料是 OntoNotes 风格：类型带后缀（per.nam 专名 / per.nom 代称 / gpe.nam 地名），
+# 只把「专名」映射成 name / address：遍称（老百姓、网友们）当人名会污染训练集。
+_WEIBO_NAME_TYPES = {"per.nam", "per"}
+_WEIBO_ADDRESS_TYPES = {"gpe.nam", "loc.nam", "loc", "gpe"}
+_WEIBO_ENTITY_TYPES = {"PER": "name", "LOC": "address", "GPE": "address"}
+
+
+def _weibo_entity_types(item: dict) -> set[str]:
+    """从一条语料里取出可用的类别键；优先用 entities 字段，退化时解析 tags。"""
+    found: set[str] = set()
+    for entity in item.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        kind = str(entity.get("type", "")).strip().lower()
+        if kind in _WEIBO_NAME_TYPES:
+            found.add("name")
+        elif kind in _WEIBO_ADDRESS_TYPES:
+            found.add("address")
+    if found:
+        return found
+    for tag in item.get("tags") or []:
+        key = str(tag).upper()
+        if len(key) > 2 and key[1] == "-":
+            key = key[2:]
+        if "." in key:
+            key, suffix = key.split(".", 1)
+            # tags 里的 .NOM 是代称，同样不当专名用
+            if suffix.upper() == "NOM":
+                continue
+        mapped = _WEIBO_ENTITY_TYPES.get(key)
+        if mapped:
+            found.add(mapped)
+    return found
+
+
+def from_weibo_ner(
+    path: str | Path, limit: int = 400, seed: int = 2026
+) -> list[Example]:
+    """把公开语料 weibo NER 的叙述句转成 L2 训练样本（用公开 NER 标注做弱监督）。
+
+    取舍：
+    - 只取带 PER/LOC 标注的句子，映射成 name / address 两类，再用 L1 弱标注补齐其它类别；
+    - 全 O 的句子**不**标 benign：微博里看着无害的句子也可能含未标注的联系方式，
+      硬标 benign 等于把噪声教给模型（这一点在 l2_training/README 里也写了）。
+    """
+    source_path = Path(path)
+    if not source_path.is_file():
+        raise FileNotFoundError(f"缺少公开语料文件：{source_path}")
+    raw = json.loads(source_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("weibo NER 语料应为 JSON 数组（每项含 tokens / tags）")
+
+    rng = random.Random(seed)
+    shuffled = list(raw)
+    rng.shuffle(shuffled)
+
+    examples: list[Example] = []
+    seen: set[str] = set()
+    for item in shuffled:
+        if len(examples) >= limit:
+            break
+        if not isinstance(item, dict):
+            continue
+        text = "".join(str(token) for token in item.get("tokens") or []).strip()
+        if len(text) < 8 or text in seen:
+            continue
+        labels = _zero_labels()
+        entity_types = _weibo_entity_types(item)
+        has_entity = bool(entity_types)
+        for typ in entity_types:
+            labels[typ] = True
+        weak = weak_label(text)
+        for name in SENSITIVE_LABELS:
+            if weak.labels.get(name):
+                labels[name] = True
+        if not has_entity and not any(labels[name] for name in SENSITIVE_LABELS):
+            continue
+        seen.add(text)
+        examples.append(Example(text=text, labels=labels, source="weibo-ner"))
+    return examples
+
+
 def from_eval_dataset(path: str | Path) -> list[Example]:
     """把人工评测集转成训练样本：金标类别为准，弱标注补齐。"""
     source_path = Path(path)
