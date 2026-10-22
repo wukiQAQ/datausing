@@ -1,4 +1,4 @@
-﻿"""运行配置。
+"""运行配置。
 
 所有配置项都可以用 ``FLOWMASK_`` 前缀的环境变量覆盖，默认值面向本机演示：
 数据写在 ``server/data``，不依赖任何外部服务；L2/L3 默认关闭（模型未接入时
@@ -45,6 +45,15 @@ def _env_int(name: str, default: int) -> int:
     return int(value)
 
 
+THEMES = ("light", "dark", "system")
+
+
+def _parse_theme(value: str) -> str:
+    """主题值只有三种；配错了退回 system，避免一个笔误让前端起不来。"""
+    normalized = (value or "").strip().lower()
+    return normalized if normalized in THEMES else "system"
+
+
 @dataclass(frozen=True)
 class Settings:
     """一份不可变的运行配置快照。"""
@@ -70,6 +79,9 @@ class Settings:
     enable_ner: bool
     ner_model_dir: str
     ner_device: str
+    # 前端默认主题：light / dark / system（system 表示跟随操作系统外观）。
+    # 用户在界面里手动选过之后，个人偏好存在库里并优先于这个默认值。
+    default_theme: str
 
     @classmethod
     def load(cls) -> "Settings":
@@ -97,6 +109,7 @@ class Settings:
             enable_ner=_env_bool("ENABLE_NER", False),
             ner_model_dir=_env_str("NER_MODEL_DIR", ""),
             ner_device=_env_str("NER_DEVICE", "cpu").strip().lower(),
+            default_theme=_parse_theme(_env_str("DEFAULT_THEME", "system")),
         )
 
 

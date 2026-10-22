@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS rules (
   enabled    INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_prefs (
+  operator_id TEXT NOT NULL,              -- 操作人（前端可用 X-Operator-Id 切换，便于演示多用户）
+  key         TEXT NOT NULL,              -- 偏好键，当前只有 theme
+  value       TEXT NOT NULL,              -- 偏好值，如 light / dark / system
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (operator_id, key)
+);
 """
 
 

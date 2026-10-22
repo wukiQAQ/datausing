@@ -337,3 +337,27 @@ class BatchTasksOut(BaseModel):
     total: int = 0
     accepted: int = 0
 
+
+
+class PreferenceIn(BaseModel):
+    """保存主题偏好：只接受 light / dark / system，其余值由接口返回 400。"""
+
+    theme: str = Field(min_length=1, max_length=16, description="light / dark / system")
+
+
+class PreferencesOut(BaseModel):
+    operator_id: str
+    theme: str | None = Field(default=None, description="当前操作人保存的主题；null 表示没选过")
+    default_theme: str = Field(description="服务端默认主题（FLOWMASK_DEFAULT_THEME）")
+    available_themes: list[str] = Field(default_factory=list)
+
+
+class PreferenceUserOut(BaseModel):
+    operator_id: str
+    theme: str
+    updated_at: datetime
+
+
+class PreferenceUsersOut(BaseModel):
+    users: list[PreferenceUserOut] = Field(default_factory=list)
+    total: int = 0
