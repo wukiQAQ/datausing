@@ -367,7 +367,8 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/dynamic/policy` | 动态脱敏策略表（四级各自的未授权/授权行为） |
 | POST | `/dynamic/render` | 动态脱敏渲染：`{text, authorized, mask_level?}`；每次渲染写审计链 |
 | GET | `/audit/export?format=jsonl\|json\|csv` | 审计导出 |
-| GET | `/preferences` | 当前操作人的界面偏好（按 `X-Operator-Id` 区分；返回 `operator_id`/`theme`/`source`/`users`/`default_theme`） |
+| GET | `/preferences` | 当前操作人的界面偏好（按 `X-Operator-Id` 区分；返回 `operator_id`/`theme`/`default_theme`/`available_themes`，`theme` 为空表示沿用默认） |
+| GET | `/preferences/users` | 已保存过偏好的操作人列表（前端顶栏「用户」下拉用） |
 | PUT | `/preferences` | 保存界面偏好：`{"theme": "light\|dark\|system"}` |
 | DELETE | `/preferences` | 清除当前操作人偏好（回落服务端默认主题） |
 
