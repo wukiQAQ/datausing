@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、345 个测试（344 通过 + 1 跳过；含 pcap 导入、批量检测、实时旁路、浅/深色主题（偏好可按用户存服务端）、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、352 个测试（351 通过 + 1 跳过；含 pcap 导入、批量检测、实时旁路、浅/深色主题（偏好可按用户存服务端）、L2/L3 真模型联调、性能基准、自由文本 NER 开关、隐私增强导出） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
@@ -41,7 +41,7 @@ go run ./cmd/genpcaps && go run ./cmd/flowmask -db data/flowmask.db
 | 审计哈希链 | HMAC-SHA256 链式签名（`prev_hash`/`signature`），可校验、可导出、可定位断链 | ✅ |
 | 统计看板数据 | 分级分布、类别 TopN、评分直方图、任务数 | ✅ |
 | 自定义规则 | 增删启停 + 正则可校验，库内持久化并即时生效 | ✅ |
-| 差分隐私 / l-多样性 | Laplace 噪声、数值泛化、l-多样性检查（已接口化） | ✅ |
+| 差分隐私 / l-多样性 | Laplace 噪声、数值泛化、l-多样性检查 + **隐私增强导出**（`/tasks/{id}/export/privacy`：分级/类别计数加噪 + l-多样性报告，前端 `ε`/`l` 可调） | ✅ |
 | 单页可视化 | `GET /ui/`：上传/粘贴 → 左右对照 + 分级统计，零前端依赖 | ✅ |
 | 正式前端（Vue3 + Element Plus + ECharts） | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），Vite 构建后挂 `/app`；未构建自动回落 `/ui/` | ✅ |
 | 流量导入（服务端 pcap） | 上传 pcap/pcapng → TCP 重组 + HTTP 正文提取 → 复用同一套分级/脱敏/任务/审计；`GET /traffic/sample` 自带示例；前端「流量导入 · pcap」页面一键跑示例（`?demo=1`） | ✅ |

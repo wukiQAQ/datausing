@@ -16,7 +16,7 @@
 | L2 语义识别（独立推理服务） | ✅ | `l2_service/` HTTP 服务：mock / ONNX int8 / auto 三后端；已用 bert-base-chinese 微调模型实测（单条 10–33 ms，CPU）；基座对比 roberta-wwm-ext 96.0% < bert 98.7%，保留 bert |
 | L1.5 实体识别（NER，可选） | ✅ | `app/identify/ner.py`：BERT4NER 补人名/地址（B-PER/B-LOC）；自由文本类型召回 22.2% → 100%（8 条探针）、公开语料压力集 200 条准确率 0.0% → 89.0%（`python -m ner_probe`），代价约 +60–70 ms/条 CPU 前向；结构化数据上会多出类别 ⇒ **服务端不做默认开启**，由每次请求的 `enable_ner` 决定（前端检测页有「自由文本 NER」开关 + 状态标签） |
 | L3 本地大模型复核 | ✅ | 独立 `l3_service` 双后端：**指令裁判**（Qwen2.5-1.5B-Instruct，按本项目四级标准直出 `level/reason/categories`，默认推荐）或**护栏**（Qwen3Guard-Gen-0.6B，Safe/Controversial/Unsafe）；只复核 L1 灰区、只升不降、默认封顶 L2，异常即降级 |
-| 差分隐私 / l-多样性算子 | ✅ | Laplace 噪声、数值泛化、l-多样性检查（接口化，供动态脱敏演示） |
+| 差分隐私 / l-多样性 | ✅ | 算子层（Laplace 噪声、数值泛化、l-多样性检查）+ **隐私增强导出** `GET /tasks/{id}/export/privacy`：导出前对分级/类别计数加 Laplace 噪声、并给出 l-多样性检查结论（`ε`/`l` 可按请求调整，默认 1.0/3）；前端「任务与审计链」页有 ε、l 输入与「隐私导出」按钮 |
 | 后台任务 + 结果落库 | ✅ | 线程执行、`tasks`/`findings` 表、按级别/类型查询 |
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
@@ -29,7 +29,6 @@
 | 性能基准 | ✅ | `server/bench.py` 本机实测：L1 **0.022 ms**/条（≈4.4 万条每秒）、端到端 `/detect` **2.18 ms**（≈459 请求/秒）、L2 int8 单条 7.4→4.1 ms、L3 1.5B **1.16 s**/条；报告 `docs/性能报告.md` 可一条命令复跑 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
 | L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据（默认 800 条，含 30% 困难负例）、弱标注、数据体检、微调 + ONNX 导出；本机真模型 macro-F1 **0.9844**、benign F1 **0.954** |
-| L3 训练侧（LoRA 指令微调） | ✅ | `l3_training/`：351 条评测集金标 → 指令样本（级别 + 类别 + 模板理由），LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 **60.0% → 76.2%**（80 条分层样本），合并成完整权重后 `FLOWMASK_L3_MODE=instruct` 直接加载 |
 | L3 训练侧（LoRA 指令微调） | ✅ | `l3_training/`：351 条评测集金标 → 指令样本（级别 + 类别 + 模板理由），LoRA 微调 Qwen2.5-1.5B；裁判单任务准确率 **60.0% → 76.2%**（80 条分层样本），合并成完整权重后 `FLOWMASK_L3_MODE=instruct` 直接加载 |
 
 ## 2. 快速开始
@@ -60,7 +59,7 @@ scripts\stop_local.cmd                            # 停止全部
 ### 2.2 手动启动（分步调试用）
 
 ```powershell
-python -m pytest -o addopts="" -q    # 345 个用例（344 通过 + 1 跳过）
+python -m pytest -o addopts="" -q    # 352 个用例（351 通过 + 1 跳过）
 python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
@@ -307,35 +306,6 @@ python -m l3_training merge --out models/qwen2.5-1.5b-sens
   用 `FLOWMASK_L3_MODEL_DIR=models/qwen2.5-1.5b-sens` 切换即可；
 - 训练脚本与推理共用同一段 `INSTRUCT_PROMPT` 和同一行 JSON 契约，接线上零代码改动。
 
-### 4.1 L3 训练侧（LoRA 指令微调）
-
-L3 的定位是「复核 + 解释」，但零样本 1.5B 裁判对真实 PII 只会给模糊结论（见上面策略矩阵）。
-`l3_training/` 给它补上本域监督：把评测集金标转成指令样本，LoRA 微调后精度明显提升。
-
-```powershell
-cd server
-python -m l3_training dataset          # 351 条金标 → data/l3_training.jsonl（train 316 / val 35）
-python -m l3_training dry-run          # 数据体检：级别覆盖、目标可解析性
-pip install peft                       # torch/transformers 已在 requirements-ml.txt
-python -m l3_training train --epochs 1 --max-length 768   # GPU 74.5 s（8GB 显存够）
-python -m l3_training merge --out models/qwen2.5-1.5b-sens
-```
-
-**裁判单任务实测**（80 条分层样本，同一套 prompt 与解析）：
-
-| 模型 | 分级准确率 | L3 | L2 | L1 | SAFE | 均延迟 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Qwen2.5-1.5B-Instruct 零样本 | 60.0% | 60% | 35% | 100% | 45% | 918 ms |
-| LoRA 微调 qwen2.5-1.5b-sens | **76.2%** | **90%** | **80%** | 45% | **90%** | 1298 ms |
-
-**接回管道的结论（重要，答辩要说实话）**：
-
-- 微调提升的是「裁判本身」，不等于「端到端分级更准」：管道里 L1+L2 已 **100.0%**，
-  而裁判单任务只有 76.2%，让它覆盖级别反而会往下拉（采信分级建议时 100.0% → 91.2%，
-  主要是 L1 被抬成中危；关掉 `FLOWMASK_L3_TRUST_LEVEL_HINT` 后回到 99.4%）；
-- 所以默认策略保持不变：**L3 只解释/兜底，不覆盖级别**；微调权重作为「自由文本、解释质量」的可选升级，
-  用 `FLOWMASK_L3_MODEL_DIR=models/qwen2.5-1.5b-sens` 切换即可；
-- 训练脚本与推理共用同一段 `INSTRUCT_PROMPT` 和同一行 JSON 契约，接线上零代码改动。
 - 复现上面的对比：`python l3_judge_compare.py --base http://127.0.0.1:8092/v1/judge --tuned http://127.0.0.1:8093/v1/judge --limit-per-level 20`（两个 l3_service 分别加载基座与微调权重）。
 
 ## 5. 评测跑分
@@ -375,6 +345,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/tasks` / `/tasks/{id}` | 任务列表 / 详情 |
 | GET | `/tasks/{id}/findings` | 任务结果（`level`/`page`/`page_size`） |
 | GET | `/tasks/{id}/export?format=jsonl\|json\|csv\|sql` | 导出脱敏结果 |
+| GET | `/tasks/{id}/export/privacy?format=jsonl\|json&epsilon=&l=` | 隐私增强导出（DP 计数 + l-多样性） |
 | GET | `/findings` / `/findings/{id}` | 全量结果查询 |
 | GET | `/stats` | 看板：分级分布、类别 TopN、评分直方图 |
 | GET/POST/PATCH/DELETE | `/rules` `/rules/{id}` | 规则查询、新增、启停、删除（内置规则可启停不可删） |
@@ -391,7 +362,25 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。
 
-## 6. 实时旁路（跟随 pcap 文件）
+## 6. 隐私增强导出（差分隐私 + l-多样性）
+
+导出「给外部看的统计/结果」时，除了脱敏，还要防「从统计值反推个体」。`app/privacy.py` 把结果导出升级成隐私增强导出：
+
+- **差分隐私**：对导出报文的**分级计数与类别计数**加 Laplace 噪声（敏感度 1，`ε` 可调，默认 1.0；`ε` 越小噪声越大、隐私越强）；行级明细仍只输出脱敏副本；
+- **l-多样性**：按「分级 × 类别」分组检查等价类是否 ≥ `l` 个不同取值（`l` 默认 3），不满足时在 `l_diversity` 里给出违规分组与条数，供人工复核；
+- **可审计**：响应头 `X-FlowMask-Privacy: laplace+l-diversity`；`ε`、`l` 与结论随导出一起返回。
+
+```powershell
+# 摘要（JSON：meta.privacy 里是 DP 计数与 l-多样性报告，findings 是脱敏明细）
+curl.exe -s "http://127.0.0.1:8090/api/v1/tasks/1/export/privacy?format=json&epsilon=1.0&l=3"
+# 下载隐私增强结果（jsonl 首行 meta 带 privacy 块）
+curl.exe -s -o privacy.jsonl "http://127.0.0.1:8090/api/v1/tasks/1/export/privacy?format=jsonl&epsilon=0.5&l=5"
+```
+
+参数范围：`ε ∈ [0.05, 10]`、`l ∈ [1, 20]`，非法值 400；任务不存在 404。
+口径说明：DP 作用在**导出统计**上，不改变页面实时检测结果；行级明细的隐私保护仍由四级脱敏负责，原文不入库。
+
+## 7. 实时旁路（跟随 pcap 文件）
 
 服务端**不直接抓网卡**：Npcap/libpcap 需要 C 绑定与管理员权限，会破坏"纯标准库、可移植、零外网"的部署口径。
 抓包交给外部工具持续写文件，服务端只做「文件增长 → 增量解析 → 按窗口检测」：
@@ -424,7 +413,7 @@ dumpcap -i 1 -w data/live.pcapng -b filesize:10240   # pcapng 同样是支持的
 - **不支持的**：HTTPS 密文、压缩体、分块传输；
 - **权限**：只允许跟随 `data_dir` 下的文件（默认 `data/`），避免任意文件读取。
 
-## 7. 配置（环境变量）
+## 8. 配置（环境变量）
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -448,7 +437,7 @@ dumpcap -i 1 -w data/live.pcapng -b filesize:10240   # pcapng 同样是支持的
 | `FLOWMASK_CORS_ORIGINS` | 本机 5173/8080 | 允许跨域的前端地址，逗号分隔 |
 | `FLOWMASK_DISABLE_DECODE` | 空（开启） | 设为 1 关闭 base64 / 百分号编码的载荷解码复核 |
 
-## 8. 代码结构
+## 9. 代码结构
 
 ```text
 server/
@@ -512,7 +501,7 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
 - 多用户/跟随后端：偏好落在服务端 `user_prefs` 表，按 `X-Operator-Id`（默认 `local`）区分；顶栏「用户」下拉可切换操作人，切换后自动拉取该用户的主题；
 - 服务端默认主题用 `FLOWMASK_DEFAULT_THEME=light|dark|system` 配置；前端 localStorage 仅作首屏缓存与离线兜底。
 
-## 9. 设计要点（答辩口径）
+## 10. 设计要点（答辩口径）
 
 1. **原文不落库**：库里只存 `input_hash`（原文 SHA-256）、脱敏副本与哈希链字段；检索比对靠哈希，泄露风险最低。
 2. **分级识别按成本升级**：L1 微秒~毫秒级全量跑；只有 L1 命中且分数落在 0.25~0.85 灰区的样本才送 L3 复核；L3 只在 `Unsafe` 时升级，`Controversial/Safe` 只记理由，避免小模型把低危抬成中危。L2/L3 均可在配置里关掉，关掉即「纯规则模式」，链路不阻塞。
@@ -520,7 +509,7 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
 4. **可复算可审计**：每条 finding 带 `rule_ids`、`confidence_vector`、`model_chain`、`reasons`；审计日志与 finding 一一对应，`prev_hash` 串成链，任何字段改动都会在 `/audit/verify` 暴露。
 5. **模块化便于扩展**：解析器、识别器、算子、导出格式都是小函数/协议 + 注册表，新增格式或模型不需改主流程。
 
-## 10. 性能基准（本机实测）
+## 11. 性能基准（本机实测）
 
 一次真实运行的样本，报告在 [`docs/性能报告.md`](../docs/性能报告.md)（由下面的命令直接生成，不手工填数）：
 
@@ -539,7 +528,7 @@ python -m bench --l3-endpoint http://127.0.0.1:8092/v1/judge --markdown-out ../d
 测试机：AMD Ryzen 9 8940HX（32 线程）、31 GB 内存、Windows 11、Python 3.12.10，2026-10-20 实测。
 诚实边界：L3 只复核 L1 灰区样本（默认关闭），全量走 L3 会因 1.16 s/条成为吞吐瓶颈 —— 这正是「三级协同、按需升级」的设计理由。
 
-## 11. 部署与一键启动
+## 12. 部署与一键启动
 
 见「2.1 一键启动」；下面只补充部署相关的约定。
 
@@ -664,7 +653,7 @@ powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1 -Mode stop 
 已知边界：exe 只跑**主服务**；L2/L3/NER 的 torch/onnxruntime 推理仍以 Python 进程单独启动（`python -m l2_service`），
 以免把 CUDA/驱动版本耦合进 exe。打包用 PyInstaller（`flowmask.spec`），**不需要** Rust/Node 运行时。
 
-## 12. 下一步
+## 13. 下一步
 
 - **L2 真权重**：已用 bert-base-chinese 微调并导出 ONNX int8（`l2_models/bert-sens-onnx`，单条 10–33 ms）；权重不入库，重训命令见 `l2_training/README.md`；
 - **LLM 敏感度调优**：已落地 LoRA 指令微调（`l3_training/`，裁判准确率 60.0% → 76.2%，见 4.1 节）；但管道里 L1+L2 已 99.7%，L3 默认仍只做解释/兜底——下一步是扩大本域标注（含自由文本），再决定是否让 L3 覆盖分级；
