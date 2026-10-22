@@ -21,9 +21,11 @@
 | 审计哈希链 | ✅ | HMAC-SHA256 链式签名，可校验、可导出；篡改/删除能定位到断链条目 |
 | 统计看板数据 | ✅ | 分级分布、类别 TopN、评分直方图、任务数 |
 | 单页可视化（左右对照） | ✅ | `GET /ui/` 内置页面：上传/粘贴 → 左原文高亮、右脱敏副本、分级统计，无需装前端工具链 |
-| 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：6 个页面（即时检测·左右对照 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
+| 正式前端（Vue3 + Element Plus + ECharts） | ✅ | `web/`：7 个页面（即时检测·左右对照 / 批量检测·多文件 / 流量导入·pcap / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏），`npm run build` 后由服务端挂在 `/app`；未构建时自动回落到 `/ui/` |
 | 自定义规则 | ✅ | 增删启停 + 正则合法性校验，库内持久化 |
 | 评测跑分 | ✅ | 自建标注集 **351 条**（策展 75 + 生成 225 + 稀有类别补样 51，id/内容唯一、与训练集 0 重叠）+ 200 条 NER 压力集；L1 only 准确率 94.0%、自由文本压力集纯 L1 52.5%，接 L2 后 99.7%、安全误报率 20.8%→0.0%，`--compare-l2` 一条命令复现 |
+| 浅色 / 深色主题 | ✅ | 顶栏开关一键切换，首次跟随系统外观、手动选择后记住；页面、表格与 ECharts 图表同步换肤，`?theme=dark` 可临时覆盖（截图/演示用） |
+| 批量检测（多文件） | ✅ | `POST /tasks/batch` 一次最多 20 个文件，一个文件一个任务；单个坏文件只在结果里标错，不影响同批其它文件 |
 | 性能基准 | ✅ | `server/bench.py` 本机实测：L1 **0.022 ms**/条（≈4.4 万条每秒）、端到端 `/detect` **2.18 ms**（≈459 请求/秒）、L2 int8 单条 7.4→4.1 ms、L3 1.5B **1.16 s**/条；报告 `docs/性能报告.md` 可一条命令复跑 |
 | 动态脱敏视图（授权切换） | ✅ | `POST /api/v1/dynamic/render`：未授权返回脱敏副本、授权返回原文并写审计链；`GET /dynamic/policy` 给出四级策略表；内置页面「动态脱敏」页签可直接演示 |
 | L2 训练侧（RoBERTa 多标签） | ✅ | `l2_training/`：11 标签（10 敏感 + benign）、自举数据（默认 800 条，含 30% 困难负例）、弱标注、数据体检、微调 + ONNX 导出；本机真模型 macro-F1 **0.9844**、benign F1 **0.954** |
@@ -58,7 +60,7 @@ scripts\stop_local.cmd                            # 停止全部
 ### 2.2 手动启动（分步调试用）
 
 ```powershell
-python -m pytest -o addopts="" -q    # 218 个用例
+python -m pytest -o addopts="" -q    # 321 个用例
 python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
@@ -353,6 +355,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | DELETE | `/traffic/live` | 清理已停止的会话 |
 | POST | `/tasks` | 上传文件建任务 |
 | POST | `/tasks/text` | 粘贴文本建任务 |
+| POST | `/tasks/batch` | 批量提交：一次最多 20 个文件，单文件失败不拖垮整批 |
 | GET | `/tasks` / `/tasks/{id}` | 任务列表 / 详情 |
 | GET | `/tasks/{id}/findings` | 任务结果（`level`/`page`/`page_size`） |
 | GET | `/tasks/{id}/export?format=jsonl\|json\|csv\|sql` | 导出脱敏结果 |
@@ -467,7 +470,7 @@ l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（351 条主集 + 200 条 NER 压力集）与评测说明
-  tests/               309 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路（pcap/pcapng）、NER 探针、地名库、部署脚本
+  tests/               321 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路（pcap/pcapng）、NER 探针、地名库、批量检测、部署脚本
   pyproject.toml
   requirements.txt     运行依赖（固定版本）
   requirements-ml.txt  可选：L2/L3/NER/训练与导出
@@ -479,6 +482,12 @@ web/                   正式前端（Vue3 + Element Plus + ECharts，Vite 构�
   src/api.js           接口封装（同源 /api/v1，开发态走 vite proxy 到 8090）
   src/highlight.js     命中区间高亮 + 脱敏副本渲染
 ```
+
+### 8.1 前端主题（浅色 / 深色）
+
+- 主题状态在 `web/src/theme.js`：`initTheme()` 首次按「本地选择 → 系统外观」决定，`toggleTheme()` 顶栏开关切换并写 localStorage；
+- 颜色统一收敛到 `web/src/style.css` 的 CSS 变量（`html.dark` 覆盖一套值），组件里不写死颜色；ECharts 通过 `cssVar()` 读变量并在主题变化时重建图表；
+- 演示/截图可用 `http://127.0.0.1:8090/app/?theme=dark#stats` 临时指定主题（只对本次打开生效，不写本地存储）。
 
 ## 9. 设计要点（答辩口径）
 

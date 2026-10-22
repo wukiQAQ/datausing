@@ -6,7 +6,7 @@
 
 | 入口 | 技术栈 | 状态 | 一句话 |
 | --- | --- | --- | --- |
-| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、309 个测试（308 通过 + 1 跳过；含 pcap 导入、实时旁路、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
+| `server/`（v2 主链路） | Python 3.12 · FastAPI · SQLite | ✅ 框架完成、321 个测试（320 通过 + 1 跳过；含 pcap 导入、批量检测、实时旁路、浅/深色主题、L2/L3 真模型联调、性能基准、自由文本 NER 开关） | 上传/粘贴（txt/json/csv/sql/docx/pdf）→ 分级脱敏 → 审计链；`http://127.0.0.1:8090/app/` 正式前端、`/ui/` 零依赖单页 |
 | `web/`（正式前端） | Vue3 · Element Plus · ECharts · Vite | ✅ 5 个页面 | 即时检测·左右对照 / 任务与审计链 / 统计看板 / 识别规则 / 动态脱敏；构建产物挂在服务端 `/app` |
 | `cmd/flowmask` + `cmd/netmon`（网络扩展） | Go 1.25 · 纯 Go 抓包 | ✅ pcap → findings → API 可查 | 旁路 pcap/网卡 → 敏感数据识别 → `/api/v1/dlp/*` |
 
