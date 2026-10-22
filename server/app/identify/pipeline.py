@@ -191,6 +191,8 @@ class DetectOptions:
     enable_l3: bool = False
     # L1.5：自由文本里的人名/地址（默认关，结构化数据上会多出类别）
     enable_ner: bool = False
+    # L1 敏感词表（法规/行业/企业三级知识库，默认开；单命中权重低，不会直接升级）
+    enable_keywords: bool | None = None
     mask_level: Level | None = None
     min_level: Level = Level.SAFE
 
@@ -342,6 +344,7 @@ class DetectionPipeline:
             direct=result.direct,
             degraded=result.degraded,
             reason=reason,
+            # 敏感词表命中不参与高亮：它指向类别词本身，不是需要高亮的敏感值
             spans=[
                 {
                     "start": hit.start,
@@ -351,6 +354,7 @@ class DetectionPipeline:
                     "rule": hit.rule,
                 }
                 for hit in result.hits
+                if not hit.rule.startswith("kw-")
             ],
         )
 
@@ -361,7 +365,7 @@ class DetectionPipeline:
         options: DetectOptions,
         l2_context: str | None = None,
     ) -> tuple[Result, str, str | None]:
-        result = analyze_l1(text)
+        result = analyze_l1(text, enable_keywords=options.enable_keywords)
         chain = ["l1"]
         reason: str | None = None
 

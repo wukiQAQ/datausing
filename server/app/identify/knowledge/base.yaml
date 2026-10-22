@@ -1,0 +1,141 @@
+# 一级知识库：法规口径（《个人信息保护法》《数据安全法》与常见监管分类）
+#
+# 语义：这里的关键词本身**不是**敏感数据值，而是「这一段正文在谈论敏感主题」的线索。
+# 命中只贡献一个低权重类别证据（weight 0.25~0.40），不会单独把级别抬到高危；
+# 真正的级别仍由值形态（身份证/银行卡/密钥…）与共现规则决定。
+#
+# 字段：term(必填) / category(必填，必须是 EntityType 值) / weight / confidence / note
+tier: regulatory
+label: 法规口径
+
+terms:
+  - term: 身份证
+    category: id_card
+    weight: 0.35
+    confidence: 0.65
+    note: 出现「身份证」说明正文在谈证件信息
+  - term: 身份证号
+    category: id_card
+    weight: 0.38
+    confidence: 0.70
+  - term: 护照号
+    category: id_card
+    weight: 0.35
+    confidence: 0.65
+  - term: 社会保障号
+    category: id_card
+    weight: 0.35
+    confidence: 0.65
+  - term: 社保号
+    category: id_card
+    weight: 0.32
+    confidence: 0.62
+  - term: 驾驶证号
+    category: id_card
+    weight: 0.32
+    confidence: 0.62
+  - term: 银行卡
+    category: bank_card
+    weight: 0.35
+    confidence: 0.65
+  - term: 银行卡号
+    category: bank_card
+    weight: 0.38
+    confidence: 0.70
+  - term: 银行账户
+    category: bank_card
+    weight: 0.32
+    confidence: 0.62
+  - term: 手机号
+    category: phone
+    weight: 0.32
+    confidence: 0.62
+  - term: 手机号码
+    category: phone
+    weight: 0.32
+    confidence: 0.62
+  - term: 联系电话
+    category: phone
+    weight: 0.30
+    confidence: 0.60
+  - term: 家庭住址
+    category: address
+    weight: 0.35
+    confidence: 0.65
+  - term: 居住地址
+    category: address
+    weight: 0.32
+    confidence: 0.62
+  - term: 行踪轨迹
+    category: address
+    weight: 0.35
+    confidence: 0.62
+  - term: 病历
+    category: medical
+    weight: 0.35
+    confidence: 0.65
+  - term: 诊断结果
+    category: medical
+    weight: 0.35
+    confidence: 0.65
+  - term: 检验报告
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 处方
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 基因序列
+    category: medical
+    weight: 0.40
+    confidence: 0.70
+  - term: 生物识别
+    category: medical
+    weight: 0.35
+    confidence: 0.62
+  - term: 人脸
+    category: medical
+    weight: 0.28
+    confidence: 0.55
+  - term: 指纹
+    category: medical
+    weight: 0.30
+    confidence: 0.58
+  - term: 宗教信仰
+    category: medical
+    weight: 0.30
+    confidence: 0.55
+  - term: 犯罪记录
+    category: medical
+    weight: 0.35
+    confidence: 0.60
+  - term: 密码
+    category: password
+    weight: 0.35
+    confidence: 0.62
+  - term: 口令
+    category: password
+    weight: 0.32
+    confidence: 0.60
+  - term: 密钥
+    category: secret
+    weight: 0.38
+    confidence: 0.66
+  - term: 私钥
+    category: secret
+    weight: 0.38
+    confidence: 0.66
+  - term: 访问令牌
+    category: secret
+    weight: 0.35
+    confidence: 0.62
+  - term: token
+    category: secret
+    weight: 0.30
+    confidence: 0.55
+    note: 英文词按整词匹配，避免 tokenize 之类误命中
+  - term: 支付密码
+    category: password
+    weight: 0.40
+    confidence: 0.70

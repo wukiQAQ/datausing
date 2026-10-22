@@ -1,0 +1,65 @@
+# 三级知识库：企业口径（示例，可直接改成本单位的内部词表）
+#
+# 这是「可运营」的部分：把本单位的系统名、项目代号、内部单据名放进来，
+# 命中的正文会被标成"涉及内部敏感主题"，配合值形态规则一起判级。
+# 改完不需要动代码：服务启动即加载，或用 GET /api/v1/keywords 查看当前生效词表。
+tier: enterprise
+label: 企业口径
+
+terms:
+  - term: 内部审计
+    category: secret
+    weight: 0.30
+    confidence: 0.60
+  - term: 薪酬明细
+    category: password
+    weight: 0.32
+    confidence: 0.62
+  - term: 工资条
+    category: password
+    weight: 0.30
+    confidence: 0.60
+  - term: 员工编号
+    category: name
+    weight: 0.28
+    confidence: 0.58
+  - term: 客户名单
+    category: name
+    weight: 0.32
+    confidence: 0.62
+  - term: 供应商名录
+    category: name
+    weight: 0.28
+    confidence: 0.58
+  - term: 报价单
+    category: secret
+    weight: 0.30
+    confidence: 0.60
+  - term: 成本价
+    category: secret
+    weight: 0.28
+    confidence: 0.58
+  - term: 合同编号
+    category: secret
+    weight: 0.26
+    confidence: 0.55
+  - term: 源代码
+    category: secret
+    weight: 0.30
+    confidence: 0.60
+  - term: 堡垒机
+    category: secret
+    weight: 0.30
+    confidence: 0.60
+  - term: 运维账号
+    category: password
+    weight: 0.32
+    confidence: 0.62
+  - term: 离职原因
+    category: name
+    weight: 0.26
+    confidence: 0.55
+  - term: 竞业协议
+    category: name
+    weight: 0.28
+    confidence: 0.58

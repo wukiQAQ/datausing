@@ -24,6 +24,11 @@ def _stars(length: int) -> str:
     return "*" * max(1, min(length - 1, MAX_STARS))
 
 
+# 敏感词表（knowledge base）命中指向的是「类别词」而不是敏感值，
+# 例如正文里出现「身份证」三个字本身，不该被替换成 [已屏蔽:身份证号]。
+KEYWORD_RULE_PREFIX = "kw-"
+
+
 def mask_value(value: str, entity: EntityType, level: Level) -> str:
     """按级别对单个敏感值做脱敏。"""
     if not value:
@@ -48,6 +53,8 @@ def mask(text: str, result: Result, level: Level | None = None) -> str:
     parts: list[str] = []
     cursor = 0
     for hit in sorted(result.hits, key=lambda item: item.start):
+        if hit.rule.startswith(KEYWORD_RULE_PREFIX):
+            continue
         if hit.start < cursor:
             continue
         parts.append(text[cursor:hit.start])
@@ -64,6 +71,8 @@ def mask_hits(text: str, hits: list[Hit], level: Level) -> str:
     parts: list[str] = []
     cursor = 0
     for hit in sorted(hits, key=lambda item: item.start):
+        if hit.rule.startswith(KEYWORD_RULE_PREFIX):
+            continue
         if hit.start < cursor:
             continue
         parts.append(text[cursor:hit.start])

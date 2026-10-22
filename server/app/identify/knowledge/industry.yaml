@@ -1,0 +1,92 @@
+# 二级知识库：行业口径（医疗 / 金融 / 教育 / 政务的行业敏感项）
+#
+# 与一级库的区别：这些词只在特定行业里才意味着敏感，权重略低、置信度略低，
+# 命中后由评分公式的共现修正决定是否值得升级；单命中一般停在 L1/SAFE。
+tier: industry
+label: 行业口径
+
+terms:
+  # 医疗
+  - term: 病历号
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 住院号
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 门诊号
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 就诊卡
+    category: medical
+    weight: 0.30
+    confidence: 0.60
+  - term: 影像资料
+    category: medical
+    weight: 0.28
+    confidence: 0.58
+  - term: 病理报告
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  - term: 用药记录
+    category: medical
+    weight: 0.32
+    confidence: 0.62
+  # 金融
+  - term: 交易流水
+    category: bank_card
+    weight: 0.32
+    confidence: 0.62
+  - term: 征信报告
+    category: bank_card
+    weight: 0.35
+    confidence: 0.65
+  - term: 授信额度
+    category: bank_card
+    weight: 0.30
+    confidence: 0.60
+  - term: 还款记录
+    category: bank_card
+    weight: 0.30
+    confidence: 0.60
+  - term: 账户余额
+    category: bank_card
+    weight: 0.28
+    confidence: 0.58
+  # 教育
+  - term: 学号
+    category: name
+    weight: 0.30
+    confidence: 0.60
+  - term: 成绩单
+    category: name
+    weight: 0.28
+    confidence: 0.58
+  - term: 录取通知
+    category: name
+    weight: 0.28
+    confidence: 0.58
+  - term: 家庭情况调查
+    category: address
+    weight: 0.30
+    confidence: 0.60
+  # 政务 / 公共服务
+  - term: 户籍
+    category: address
+    weight: 0.30
+    confidence: 0.60
+  - term: 低保
+    category: address
+    weight: 0.28
+    confidence: 0.58
+  - term: 残疾人证
+    category: medical
+    weight: 0.35
+    confidence: 0.65
+  - term: 婚姻登记
+    category: name
+    weight: 0.30
+    confidence: 0.60

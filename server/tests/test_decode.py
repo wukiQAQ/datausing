@@ -60,7 +60,8 @@ def test_url_safe_base64_is_decoded() -> None:
     encoded = base64.urlsafe_b64encode(b"phone:13800138000").decode().rstrip("=")
     result = analyze(f"token {encoded}")
     assert "phone" in [typ.value for typ in result.types]
-    assert result.hits[0].rule.startswith("decoded-base64:")
+    decoded = [hit for hit in result.hits if hit.rule.startswith("decoded-base64:")]
+    assert decoded, [hit.rule for hit in result.hits]
 
 
 def test_hex_encoded_payload_is_detected() -> None:
