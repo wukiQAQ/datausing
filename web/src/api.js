@@ -61,6 +61,21 @@ export const api = {
     }),
   dynamicPolicy: () => request("/dynamic/policy"),
 
+  // 用户偏好：主题按操作人存服务端，换浏览器/换用户都能记住
+  preferences: (operatorId) =>
+    request("/preferences", { headers: operatorId ? { "X-Operator-Id": operatorId } : {} }),
+  savePreference: (theme, operatorId) =>
+    request("/preferences", {
+      ...jsonBody({ theme }),
+      headers: { "Content-Type": "application/json", "X-Operator-Id": operatorId || "local" },
+    }),
+  resetPreference: (operatorId) =>
+    request("/preferences", {
+      method: "DELETE",
+      headers: { "X-Operator-Id": operatorId || "local" },
+    }),
+  preferenceUsers: () => request("/preferences/users?limit=20"),
+
   trafficFormats: () => request("/traffic/formats"),
   trafficSampleUrl: `${BASE}/traffic/sample`,
   importTraffic: (file, opts = {}) => {

@@ -108,6 +108,15 @@ body {
   white-space: nowrap;
 }
 
+.operator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--status);
+  white-space: nowrap;
+}
+
 .side {
   background: var(--panel);
   border-right: 1px solid var(--border);
