@@ -37,6 +37,16 @@ _CSV_COLUMNS = (
 )
 
 
+def export_rows(db: Database, task_id: str) -> list[dict[str, Any]]:
+    """导出行（脱敏副本），供普通导出与隐私导出共用。"""
+    return _rows(db, task_id)
+
+
+def export_meta(db: Database, task_id: str, total: int) -> dict[str, Any]:
+    """导出元数据（导出时间、操作口径等）。"""
+    return _meta(db, task_id, total)
+
+
 def _rows(db: Database, task_id: str) -> list[dict[str, Any]]:
     with db.connect() as conn:
         rows = conn.execute(

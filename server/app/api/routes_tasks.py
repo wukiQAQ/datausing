@@ -13,6 +13,7 @@ from ..core.db import Database
 from ..identify import DetectionPipeline
 from ..parsers.base import ParseError, ParseUnsupported
 from ..parsers.registry import parse_bytes, parse_text_input
+from ..privacy import DEFAULT_EPSILON, DEFAULT_L, export_with_privacy
 from ..tasks.export import EXPORT_FORMATS, export_findings
 from ..tasks.service import create_task, get_task, list_tasks, page_findings
 from .deps import build_options, db_dep, operator_dep, pipeline_dep, settings_dep
@@ -201,6 +202,33 @@ def task_findings(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     items, total = page_findings(db, task_id=task_id, level=level, page=page, page_size=page_size)
     return FindingPage(items=[FindingOut(**item) for item in items], total=total, page=page, page_size=page_size)
+
+
+@router.get(
+    "/tasks/{task_id}/export/privacy",
+    summary="隐私增强导出（Laplace 差分隐私计数 + l-多样性校验）",
+)
+def export_task_privacy(
+    task_id: str,
+    fmt: str = Query(default="jsonl", alias="format", description="jsonl / json"),
+    epsilon: float = Query(default=DEFAULT_EPSILON, description="差分隐私预算（0.05~10，越小噪声越大）"),
+    l: int = Query(default=DEFAULT_L, description="l-多样性下限（1~20）"),
+    db: Database = Depends(db_dep),
+) -> Response:
+    if get_task(db, task_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    try:
+        content, media_type, filename = export_with_privacy(db, task_id, fmt, epsilon, l)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-FlowMask-Privacy": "laplace+l-diversity",
+        },
+    )
 
 
 @router.get("/tasks/{task_id}/export", summary="导出审计日志（jsonl/json/csv/sql）")

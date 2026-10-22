@@ -43,6 +43,10 @@ export const api = {
   taskFindings: (id, page = 1, pageSize = 50) =>
     request(`/tasks/${id}/findings?page=${page}&page_size=${pageSize}`),
   taskExportUrl: (id, fmt) => `${BASE}/tasks/${id}/export?format=${fmt}`,
+  privacyExport: (id, epsilon, l) =>
+    request(`/tasks/${id}/export/privacy?format=json&epsilon=${epsilon}&l=${l}`),
+  privacyExportUrl: (id, epsilon, l) =>
+    `${BASE}/tasks/${id}/export/privacy?format=jsonl&epsilon=${epsilon}&l=${l}`,
 
   stats: (taskId) => request(`/stats${taskId ? `?task_id=${taskId}` : ""}`),
   audit: (page = 1, pageSize = 20) => request(`/audit?page=${page}&page_size=${pageSize}`),

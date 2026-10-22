@@ -11,12 +11,19 @@ const current = ref(null);
 const loading = ref(false);
 const file = ref(null);
 const textInput = ref("");
+// 隐私导出参数：epsilon 越小噪声越大；l 是 l-多样性下限
+const epsilon = ref(1.0);
+const diversityL = ref(3);
 
 async function loadTasks() {
   loading.value = true;
   try {
     const body = await api.tasks(1, 20);
     tasks.value = body.items || [];
+    // 默认展开最新任务：结果与「隐私导出」都在详情面板里，省掉一次点击
+    if (!current.value && tasks.value.length) {
+      await openTask(tasks.value[0]);
+    }
   } catch (err) {
     ElMessage.error(`加载任务失败：${err}`);
   } finally {
@@ -85,6 +92,28 @@ async function copyExport(fmt) {
   }
 }
 
+async function privacyExport() {
+  if (!current.value) return;
+  try {
+    const body = await api.privacyExport(current.value.id, epsilon.value, diversityL.value);
+    const privacy = body.meta.privacy;
+    const noisy = Object.entries(privacy.dp_by_level)
+      .map(([level, count]) => `${level}:${count}`)
+      .join(" / ");
+    const diversity = privacy.l_diversity.ok
+      ? "通过"
+      : `有 ${privacy.l_diversity.violation_count} 组不满足`;
+    ElMessage({
+      type: privacy.l_diversity.ok ? "success" : "warning",
+      duration: 8000,
+      message: `隐私导出：ε=${privacy.epsilon}，l=${privacy.l}；加噪分级计数 ${noisy}；l-多样性${diversity}`,
+    });
+    window.open(api.privacyExportUrl(current.value.id, epsilon.value, diversityL.value), "_blank");
+  } catch (err) {
+    ElMessage.error(`隐私导出失败：${err.message || err}`);
+  }
+}
+
 onMounted(async () => {
   await loadTasks();
   await loadAudit();
@@ -123,6 +152,12 @@ onMounted(async () => {
         <el-button size="small" @click="copyExport('csv')">导出 CSV</el-button>
         <el-button size="small" @click="copyExport('json')">导出 JSON</el-button>
         <el-button size="small" @click="copyExport('sql')">导出 SQL</el-button>
+        <el-divider direction="vertical" />
+        <span class="hint-inline">ε</span>
+        <el-input-number v-model="epsilon" :min="0.05" :max="10" :step="0.5" size="small" style="width: 96px" />
+        <span class="hint-inline">l</span>
+        <el-input-number v-model="diversityL" :min="1" :max="20" size="small" style="width: 80px" />
+        <el-button size="small" type="warning" @click="privacyExport">隐私导出</el-button>
       </span>
     </div>
     <el-table :data="findings" stripe>
