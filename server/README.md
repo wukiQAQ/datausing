@@ -10,7 +10,7 @@
 | 文本/JSON/CSV/SQL/Word/PDF 解析与分段定位 | ✅ | 文本整段；JSON 走 `$` 路径；CSV/TSV 每单元格 `row{n}.{列名}`；SQL 提取 DML 字符串字面量；Word 段落 `p{n}` / 表格 `table{表}.{行}.{列}`；PDF 按页 `page{n}`（依赖可选 `pdfplumber`） |
 | pcap 流量导入（服务端） | ✅ | 上传 pcap/pcapng → TCP 重组 + HTTP 请求解析 → 每个正文当一个片段，复用同一套识别/分级/脱敏/任务/审计；`GET /traffic/sample` 提供自带示例（`samples/demo-traffic.pcap`）；HTTPS、压缩体与分块传输暂不解析 |
 | 实时旁路（跟随抓包文件） | ✅ | 服务端持续跟随一个不断增长的抓包文件（由 dumpcap/Wireshark/自研采集器写），按「落库窗口」把新正文汇总成检测任务；**pcap 与 pcapng 都支持**（dumpcap 默认写 pcapng）；`/traffic/live*` 管理会话，演示脚本 `samples/simulate_live_traffic.py` |
-| L1 规则识别 | ✅ | 17 条规则（含 4 条自由文本）+ 省/市地名库补白 + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验；另加编码载荷解码复核（base64 / URL-safe / hex / 百分号，两层嵌套） |
+| L1 规则识别 | ✅ | 17 条规则（含 4 条自由文本）+ 省/市地名库补白 + 三级敏感词表（66 词，Aho-Corasick） + 身份证 MOD 11-2 / 银行卡 Luhn / IPv4 校验；另加编码载荷解码复核（base64 / URL-safe / hex / 百分号，两层嵌套） |
 | 敏感度评分与四级分级 | ✅ | 加权最大 + 多标签共现修正 + 极端类别直达（L3/L2/L1/SAFE） |
 | 四级脱敏 + 左右对照 | ✅ | L3 全屏蔽、L2 保留首字符+星号、L1 前置警示、SAFE 原文；输出「原文哈希 + 脱敏副本 + 命中区间（spans）」供前端高亮，原文不入库 |
 | L2 语义识别（独立推理服务） | ✅ | `l2_service/` HTTP 服务：mock / ONNX int8 / auto 三后端；已用 bert-base-chinese 微调模型实测（单条 10–33 ms，CPU）；基座对比 roberta-wwm-ext 96.0% < bert 98.7%，保留 bert |
@@ -60,7 +60,7 @@ scripts\stop_local.cmd                            # 停止全部
 ### 2.2 手动启动（分步调试用）
 
 ```powershell
-python -m pytest -o addopts="" -q    # 332 个用例
+python -m pytest -o addopts="" -q    # 345 个用例（344 通过 + 1 跳过）
 python -m bench --markdown-out ../docs/性能报告.md   # 性能基准（L1/端到端/L2；加 --l3-endpoint 测 L3）
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8090
 # 构建正式前端（可选，需 Node 18+；产物在 ../web/dist）
@@ -180,6 +180,22 @@ python -m uvicorn app.main:app --port 8090
 - 实测：压力集纯 L1 准确率 **52.5% → 61.0%**、Micro-F1 **0.634 → 0.709**；主评测集 `L1+L2` 仍 **100.0%**、
   安全误报 **0.0%**（没有引入新误报）；
 - 覆盖见 `tests/test_gazetteer.py`（17 例：方位词/后缀正例、泛称误报、「看到」类负例、重叠与排序、开关）。
+
+### 3.0.4 敏感词表（三级知识库，Aho-Corasick）
+
+规则抓「值」，词表抓「主题」：正文里出现「身份证」「病历号」「交易流水」这类**类别词**时，说明这段内容在谈敏感主题，
+但类别词本身不是敏感值。词表把它们作为**低权重旁证**并入 L1 证据链，用于解释「为什么触发」与给 L2/L3 复核提供线索。
+
+- 知识库：`app/identify/knowledge/*.yaml` 三级 —— 法规（32 条：身份证/护照/行踪轨迹/基因/生物识别/宗教信仰/犯罪记录/密钥…）、
+  行业（20 条：病历号/住院号/交易流水/征信/学号/户籍…）、企业（14 条示例：内部审计/薪酬/客户名单/源代码/堡垒机…，可替换成本单位词表，重启生效）；
+- 实现：`app/identify/keywords.py`，启动时 YAML → Aho-Corasick 自动机（装了 `pyahocorasick` 走 C 扩展，没装自动退回同语义的纯 Python 实现）；
+  英文词按整词边界匹配（`token` 不命中 `tokenize`）；
+- 口径：单条词默认权重 0.30 / 置信度 0.60，**关键词加分封顶 +0.10**，只靠类别词不会把 SAFE 顶到 L1；
+  词表命中不参与脱敏与高亮（否则会把「身份证」三个字换成 `[已屏蔽:身份证号]`），只留在 `hits` 里（`rule=kw-<tier>`）作证据；
+- 接口：`GET /api/v1/keywords?tier=&limit=` 返回词表与三级分布；`/health` 的 `keywords` / `keyword_tiers` 给出加载数量；
+- 开关：默认开启；`FLOWMASK_DISABLE_KEYWORDS=1` 全局关，`analyze(..., enable_keywords=False)` 或请求体 `enable_keywords` 单次关；
+- 评测：351 条主集上 L1-only 准确率 **94.3% → 94.3%**、类别 Micro-F1 **0.888 → 0.888**（中性、无回归）；
+- 覆盖：`tests/test_keywords.py`（12 例：三级加载、非法条目、重叠与整词边界、封顶加分、开关、接口）。
 
 ### 3.1 L1.5 实体识别（NER，可选）
 
@@ -371,6 +387,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/preferences/users` | 已保存过偏好的操作人列表（前端顶栏「用户」下拉用） |
 | PUT | `/preferences` | 保存界面偏好：`{"theme": "light\|dark\|system"}` |
 | DELETE | `/preferences` | 清除当前操作人偏好（回落服务端默认主题） |
+| GET | `/keywords` | 当前生效的敏感词表（`tier`/`limit` 过滤；返回总条目数与三级分布） |
 
 鉴权：设置 `FLOWMASK_API_TOKEN` 后，`/api/v1/*` 需 `Authorization: Bearer <token>`；留空即本机演示模式。
 
@@ -474,7 +491,7 @@ l3_training/         L3 指令微调：金标→指令样本、LoRA 训练、权
   l3_service/          L3 推理服务（mock / hf / instruct 后端 + /v1/judge”）
   samples/             自带示例抓包生成脚本与 demo-traffic.pcap
   eval/                评测集（351 条主集 + 200 条 NER 压力集）与评测说明
-  tests/               332 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路（pcap/pcapng）、NER 探针、地名库、批量检测、部署脚本
+  tests/               345 个用例：识别、解析（含 Word/PDF）、管线、审计、API、界面、动态脱敏、L2/L3 服务、训练侧、评测（含数据集完整性）、流量导入、实时旁路（pcap/pcapng）、NER 探针、地名库、敏感词表、批量检测、部署脚本
   pyproject.toml
   requirements.txt     运行依赖（固定版本）
   requirements-ml.txt  可选：L2/L3/NER/训练与导出
