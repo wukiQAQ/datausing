@@ -16,9 +16,12 @@ from ..parsers.registry import parse_bytes, parse_text_input
 from ..tasks.export import EXPORT_FORMATS, export_findings
 from ..tasks.service import create_task, get_task, list_tasks, page_findings
 from .deps import build_options, db_dep, operator_dep, pipeline_dep, settings_dep
-from .schemas import FindingOut, FindingPage, TaskCreateOut, TaskOut, TaskPage
+from .schemas import BatchItemOut, BatchTasksOut, FindingOut, FindingPage, TaskCreateOut, TaskOut, TaskPage
 
 router = APIRouter(tags=["tasks"])
+
+# 批量上传一次最多接受的文件数：再多就让用户分批，避免一个请求里排队几十个后台任务
+MAX_BATCH_FILES = 20
 
 
 @router.post("/tasks", response_model=TaskCreateOut, summary="提交任务：上传文件")
@@ -92,6 +95,80 @@ def create_text_task(
         pipeline=pipeline,
     )
     return TaskCreateOut(task_id=task_id, status="pending")
+
+
+@router.post(
+    "/tasks/batch",
+    response_model=BatchTasksOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="批量提交任务：一次上传多个文件",
+)
+async def create_batch_tasks(
+    files: list[UploadFile] = File(..., description=f"一次最多 {MAX_BATCH_FILES} 个文件"),
+    enable_l2: bool = False,
+    enable_l3: bool = False,
+    enable_ner: bool = False,
+    mask_level: str | None = None,
+    min_level: str = "SAFE",
+    settings: Settings = Depends(settings_dep),
+    db: Database = Depends(db_dep),
+    pipeline: DetectionPipeline = Depends(pipeline_dep),
+) -> BatchTasksOut:
+    """批量提交：每个文件一个任务，互不影响。
+
+    - 单个文件解析失败只在结果里记 `error`，不影响同批其它文件（批量场景最怕一个坏文件全挂）；
+    - 每个任务仍然走异步线程 + 落库 + 审计链，前端可用 `GET /tasks/{id}` 轮询进度。
+    """
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="至少上传一个文件")
+    if len(files) > MAX_BATCH_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"一次最多 {MAX_BATCH_FILES} 个文件，请分批提交",
+        )
+
+    options = build_options(
+        enable_l2=enable_l2 or settings.enable_l2,
+        enable_l3=enable_l3 or settings.enable_l3,
+        enable_ner=enable_ner or settings.enable_ner,
+        mask_level=mask_level,
+        min_level=min_level,
+    )
+    limit = settings.max_upload_mb * 1024 * 1024
+    items: list[BatchItemOut] = []
+    for upload in files:
+        name = upload.filename or "upload"
+        data = await upload.read()
+        if len(data) > limit:
+            items.append(BatchItemOut(filename=name, error=f"文件超过上限 {settings.max_upload_mb} MB"))
+            continue
+        try:
+            document = parse_bytes(name, data)
+        except ParseUnsupported as exc:
+            items.append(BatchItemOut(filename=name, error=str(exc)))
+            continue
+        except ParseError as exc:
+            items.append(BatchItemOut(filename=name, error=f"解析失败：{exc}"))
+            continue
+        task_id = create_task(
+            db,
+            source=name,
+            content_type=document.content_type,
+            document=document,
+            options=options,
+            pipeline=pipeline,
+        )
+        items.append(
+            BatchItemOut(
+                filename=name,
+                task_id=task_id,
+                content_type=document.content_type,
+                segments=len(document.segments),
+            )
+        )
+
+    accepted = sum(1 for item in items if item.task_id)
+    return BatchTasksOut(items=items, total=len(items), accepted=accepted)
 
 
 @router.get("/tasks", response_model=TaskPage, summary="任务列表（新的在前）")

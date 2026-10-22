@@ -1,4 +1,4 @@
-﻿"""接口请求/响应模型（Pydantic v2）。
+"""接口请求/响应模型（Pydantic v2）。
 
 Swagger（``/docs``）直接读这里，因此描述写清楚：初赛评审点开就能看懂每个字段。
 """
@@ -320,3 +320,20 @@ class LiveOut(BaseModel):
 
 class LiveListOut(BaseModel):
     sessions: list[LiveOut] = Field(default_factory=list)
+
+
+class BatchItemOut(BaseModel):
+    """批量任务里的单个文件结果：成功给 task_id，失败只给 error（不影响同批其它文件）。"""
+
+    filename: str
+    task_id: str = ""
+    content_type: str = ""
+    segments: int = 0
+    error: str = ""
+
+
+class BatchTasksOut(BaseModel):
+    items: list[BatchItemOut] = Field(default_factory=list)
+    total: int = 0
+    accepted: int = 0
+
