@@ -20,12 +20,15 @@ def tmp_env(tmp_path, monkeypatch):
     from app.core.config import get_settings
     from app.core.db import reset_database_for_tests
     from app.identify.rules import set_active_rules
+    from app.identify.snapshots import get_snapshot_store
 
     get_settings.cache_clear()
     reset_database_for_tests()
     reset_pipeline_for_tests()
     set_active_rules(None)
+    get_snapshot_store().clear()
     yield
+    get_snapshot_store().clear()
     get_settings.cache_clear()
     reset_database_for_tests()
     reset_pipeline_for_tests()

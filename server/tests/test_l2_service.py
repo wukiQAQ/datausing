@@ -131,9 +131,32 @@ def test_http_client_parses_hits_and_benign(live_service: str) -> None:
     assert benign_hits[0].confidence == pytest.approx(0.9)
 
 
-def test_http_client_degrades_on_dead_endpoint() -> None:
-    classifier = HttpSemanticClassifier(f"http://127.0.0.1:{_free_port()}/v1/classify", timeout_s=0.5)
-    assert classifier.predict("任意文本") == []
+@pytest.mark.parametrize("cause, error", [
+    (ConnectionRefusedError(), ConnectionError),
+    (TimeoutError(), TimeoutError),
+])
+def test_http_client_distinguishes_network_failures(monkeypatch, cause, error) -> None:
+    from urllib.error import URLError
+
+    def fail(*args, **kwargs):
+        raise URLError(cause)
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    classifier = HttpSemanticClassifier("http://localhost/v1/classify", timeout_s=0.5)
+    with pytest.raises(error):
+        classifier.predict("任意文本")
+
+
+@pytest.mark.parametrize("reply", [
+    {"items": []},
+    {"items": [{"id": "other", "types": []}]},
+    {"items": [{"id": "seg", "types": [], "degraded": True}]},
+    {"items": [{"id": "seg", "types": [], "benign": float("nan")}]},
+])
+def test_http_client_rejects_invalid_or_degraded_item(monkeypatch, reply) -> None:
+    monkeypatch.setattr("app.identify.l2.post_json", lambda *args: reply)
+    with pytest.raises(ValueError):
+        HttpSemanticClassifier("http://localhost", 0.5).predict("测试文本")
 
 
 def test_semantic_hit_benign_defaults() -> None:

@@ -1,10 +1,18 @@
 <script setup>
+import { safeError } from "../workspace";
+import DocumentComparison from "../components/DocumentComparison.vue";
+import PageHeader from "../components/PageHeader.vue";
+import AppIcon from "../components/AppIcon.vue";
+import RiskIndicator from "../components/RiskIndicator.vue";
+import AdvancedOptions from "../components/AdvancedOptions.vue";
 import { computed, onBeforeUnmount, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { api, downloadWithAuth, LEVEL_COLORS } from "../api";
+import { api, downloadWithAuth } from "../api";
 
+const comparison = ref(null);
 const MAX_FILES = 20;
 const files = ref([]);
+const uploadRef = ref(null);
 const running = ref(false);
 const rows = ref([]);
 const activeTask = ref("");
@@ -24,16 +32,26 @@ let submitSeq = 0;
 let openTaskSeq = 0;
 
 const canRun = computed(() => files.value.length > 0 && !running.value);
-const doneCount = computed(() => rows.value.filter((row) => ["done", "failed", "解析失败"].includes(row.status)).length);
+const doneCount = computed(
+  () =>
+    rows.value.filter((row) =>
+      ["done", "failed", "解析失败"].includes(row.status),
+    ).length,
+);
 
 function onChange(uploadFile, uploadFiles) {
-  files.value = uploadFiles.slice(0, MAX_FILES).map((item) => item.raw).filter(Boolean);
+  files.value = uploadFiles
+    .slice(0, MAX_FILES)
+    .map((item) => item.raw)
+    .filter(Boolean);
   if (uploadFiles.length > MAX_FILES) {
     ElMessage.warning(`一次最多 ${MAX_FILES} 个文件，已截断`);
   }
 }
 
 function clearAll() {
+  comparison.value = null;
+  uploadRef.value?.clearFiles();
   files.value = [];
   rows.value = [];
   findings.value = [];
@@ -77,7 +95,7 @@ async function run() {
     startPolling();
   } catch (err) {
     if (seq !== submitSeq) return;
-    ElMessage.error(`批量提交失败：${err}`);
+    ElMessage.error(`批量提交失败：${safeError(err)}`);
     running.value = false;
   }
 }
@@ -128,9 +146,9 @@ async function refresh() {
         }
       } catch (err) {
         if (seq !== refreshSeq) return;
-        row.error = String(err);
+        row.error = safeError(err);
       }
-    })
+    }),
   );
 }
 
@@ -147,17 +165,25 @@ async function openTask(row) {
     findingsTotal.value = page.total;
   } catch (err) {
     if (seq !== openTaskSeq) return;
-    ElMessage.error(`加载结果失败：${err}`);
+    ElMessage.error(`加载结果失败：${safeError(err)}`);
   }
 }
 
 async function downloadTask(row) {
   if (!row.taskId) return;
   try {
-    await downloadWithAuth(api.taskExportUrl(row.taskId, "jsonl"), `flowmask-${row.taskId}.jsonl`);
+    await downloadWithAuth(
+      api.taskExportUrl(row.taskId, "jsonl"),
+      `flowmask-${row.taskId}.jsonl`,
+    );
   } catch (err) {
-    ElMessage.error(`导出失败：${err}`);
+    ElMessage.error(`导出失败：${safeError(err)}`);
   }
+}
+
+async function downloadDocument(row) {
+  try { await downloadWithAuth(api.taskComparisonDownloadUrl(row.taskId), "flowmask-masked.txt"); }
+  catch { ElMessage.error("无法下载脱敏文档，快照可能已过期，请重新提交文件。"); }
 }
 
 function statusType(status) {
@@ -165,10 +191,6 @@ function statusType(status) {
   if (status === "failed" || status === "解析失败") return "danger";
   if (status === "running") return "warning";
   return "info";
-}
-
-function levelStyle(level) {
-  return { backgroundColor: LEVEL_COLORS[level] || "#64748b" };
 }
 
 function preview(text, limit = 60) {
@@ -186,12 +208,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <DocumentComparison v-if="comparison" :task-id="comparison.taskId" :filename="comparison.filename" @close="comparison = null" />
+  <PageHeader
+    title="批量检测"
+    description="多文件并行处理，逐项追踪进度与失败原因。"
+    index="BATCH PROCESSING"
+  />
   <div class="panel">
     <div class="panel-title">
       批量检测（一次最多 {{ MAX_FILES }} 个文件）
-      <span class="hint">每个文件一个任务，坏文件只在结果里标错，不影响同批其它文件</span>
+      <span class="hint"
+        >每个文件一个任务，坏文件只在结果里标错，不影响同批其它文件</span
+      >
     </div>
     <el-upload
+      ref="uploadRef"
+      :disabled="running"
       drag
       multiple
       :auto-upload="false"
@@ -201,37 +233,67 @@ onBeforeUnmount(() => {
     >
       <div class="upload-tip">
         <div class="upload-title">点击或拖拽多个文件到这里</div>
-        <div class="upload-sub">支持 txt / json / csv / sql / docx / xlsx / pdf，单文件上限由服务端配置（默认 20 MB）</div>
+        <div class="upload-sub">
+          支持 txt / json / csv / sql / docx / xlsx /
+          pdf，单文件上限由服务端配置（默认 20 MB）
+        </div>
       </div>
     </el-upload>
 
-    <div class="toolbar">
+    <AdvancedOptions title="批量检测配置">
       <span class="tool-label">脱敏级别</span>
       <el-select v-model="options.maskLevel" size="small" style="width: 132px">
         <el-option label="按实际级别" value="auto" />
-        <el-option v-for="level in ['L3', 'L2', 'L1', 'SAFE']" :key="level" :label="level" :value="level" />
+        <el-option
+          v-for="level in ['L3', 'L2', 'L1', 'SAFE']"
+          :key="level"
+          :label="level"
+          :value="level"
+        />
       </el-select>
       <span class="tool-label">只显示 ≥</span>
       <el-select v-model="options.minLevel" size="small" style="width: 110px">
-        <el-option v-for="level in ['SAFE', 'L1', 'L2', 'L3']" :key="level" :label="level" :value="level" />
+        <el-option
+          v-for="level in ['SAFE', 'L1', 'L2', 'L3']"
+          :key="level"
+          :label="level"
+          :value="level"
+        />
       </el-select>
       <el-checkbox v-model="options.enableL2">L2 语义复核</el-checkbox>
       <el-checkbox v-model="options.enableL3">L3 大模型复核</el-checkbox>
       <el-checkbox v-model="options.enableNer">自由文本 NER</el-checkbox>
-      <el-button type="primary" :disabled="!canRun" :loading="running" @click="run">开始批量检测</el-button>
-      <el-button :disabled="running" @click="clearAll">清空</el-button>
+    </AdvancedOptions>
+    <div class="toolbar batch-actions">
+      <span class="hint"
+        >已选 {{ files.length }} / {{ MAX_FILES }} 个文件 · 提交时上传</span
+      ><el-button
+        type="primary"
+        :disabled="!canRun"
+        :loading="running"
+        @click="run"
+        ><AppIcon name="play" :size="15" />开始批量检测</el-button
+      ><el-button :disabled="running" @click="clearAll">清空文件</el-button>
     </div>
-
     <div v-if="rows.length" style="margin-top: 14px">
       <div class="panel-title" style="margin-bottom: 8px; font-size: 14px">
         批量结果
-        <span class="hint">已处理 {{ doneCount }}/{{ rows.length }} 个文件</span>
+        <span class="hint"
+          >已处理 {{ doneCount }}/{{ rows.length }} 个文件</span
+        >
       </div>
       <el-table :data="rows" size="small" style="width: 100%">
-        <el-table-column prop="filename" label="文件" min-width="180" show-overflow-tooltip />
+        <el-table-column
+          prop="filename"
+          label="文件"
+          min-width="180"
+          show-overflow-tooltip
+        />
         <el-table-column label="状态" width="96">
           <template #default="{ row }">
-            <el-tag size="small" :type="statusType(row.status)">{{ row.status }}</el-tag>
+            <el-tag size="small" :type="statusType(row.status)">{{
+              row.status
+            }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="segments" label="片段" width="70" />
@@ -241,16 +303,39 @@ onBeforeUnmount(() => {
         </el-table-column>
         <el-table-column label="任务" min-width="130">
           <template #default="{ row }">
-            <span class="mono">{{ row.taskId ? row.taskId.slice(0, 8) : "-" }}</span>
+            <span class="mono">{{
+              row.taskId ? row.taskId.slice(0, 8) : "-"
+            }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="260">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :disabled="!row.taskId" @click="openTask(row)">查看</el-button>
-            <el-button link type="success" size="small" :disabled="!row.taskId" @click="downloadTask(row)">导出</el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="!row.taskId"
+              @click="openTask(row)"
+              >查看</el-button
+            >
+            <el-button link type="primary" size="small" :disabled="row.status !== 'done'" @click="comparison = row">对比</el-button>
+            <el-button
+              link
+              type="success"
+              size="small"
+              :disabled="!row.taskId"
+              @click="downloadTask(row)"
+              >明细</el-button
+            >
+            <el-button link type="primary" size="small" :disabled="row.status !== 'done'" @click="downloadDocument(row)">脱敏文件</el-button>
           </template>
         </el-table-column>
-        <el-table-column prop="error" label="错误" min-width="160" show-overflow-tooltip />
+        <el-table-column
+          prop="error"
+          label="错误"
+          min-width="160"
+          show-overflow-tooltip
+        />
       </el-table>
     </div>
   </div>
@@ -258,18 +343,32 @@ onBeforeUnmount(() => {
   <div v-if="activeTask" class="panel">
     <div class="panel-title">
       结果明细
-      <span class="hint">共 {{ findingsTotal }} 条命中 · 任务 {{ activeTask.slice(0, 8) }}</span>
+      <span class="hint"
+        >共 {{ findingsTotal }} 条命中 · 任务 {{ activeTask.slice(0, 8) }}</span
+      >
     </div>
-    <el-table v-if="findings.length" :data="findings" size="small" style="width: 100%">
-      <el-table-column prop="path" label="位置" width="150" show-overflow-tooltip />
-      <el-table-column label="级别" width="76">
+    <el-table
+      v-if="findings.length"
+      :data="findings"
+      size="small"
+      style="width: 100%"
+    >
+      <el-table-column
+        prop="path"
+        label="位置"
+        width="150"
+        show-overflow-tooltip
+      />
+      <el-table-column label="级别" width="114">
         <template #default="{ row }">
-          <span class="chip" :style="levelStyle(row.level)">{{ row.level }}</span>
+          <RiskIndicator :level="row.level" />
         </template>
       </el-table-column>
       <el-table-column prop="score" label="分数" width="80" />
       <el-table-column label="类别" width="160" show-overflow-tooltip>
-        <template #default="{ row }">{{ (row.types || []).join(", ") }}</template>
+        <template #default="{ row }">{{
+          (row.types || []).join(", ")
+        }}</template>
       </el-table-column>
       <el-table-column prop="hits" label="命中" width="60" />
       <el-table-column label="脱敏副本" min-width="220">

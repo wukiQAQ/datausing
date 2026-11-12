@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -19,8 +19,8 @@ class DetectRequest(BaseModel):
 
     text: str = Field(min_length=1, max_length=200_000, description="待检测文本")
     content_type: str = Field(default="text", description="text / json / csv / sql（自动探测）")
-    enable_l2: bool = Field(default=False, description="是否启用 L2 语义识别（需推理服务在线）")
-    enable_l3: bool = Field(default=False, description="是否启用 L3 本地大模型复核（需 Ollama 在线）")
+    enable_l2: bool | None = Field(default=None, description="是否启用 L2 语义识别（需推理服务在线）")
+    enable_l3: bool | None = Field(default=None, description="是否启用 L3 本地大模型复核（需本地推理服务在线）")
     # None = 跟服务端默认（FLOWMASK_ENABLE_NER）；显式 true/false 按本次请求
     enable_ner: bool | None = Field(default=None, description="是否启用 L1.5 实体识别（人名/地址，适合自由文本）")
     enable_keywords: bool | None = Field(default=None, description="是否启用 L1 敏感词表（法规/行业/企业三级知识库）；None=跟随服务端默认（开）")
@@ -32,14 +32,15 @@ class TextTaskIn(BaseModel):
     """提交文本任务请求（会落库，因此有长度上限且不允许 mask_level=SAFE）。"""
 
     text: str = Field(min_length=1, max_length=200_000, description="待检测文本（最长 20 万字符）")
-    enable_l2: bool = Field(default=False, description="是否启用 L2 语义识别（需推理服务在线）")
-    enable_l3: bool = Field(default=False, description="是否启用 L3 本地大模型复核（需 Ollama 在线）")
+    enable_l2: bool | None = Field(default=None, description="是否启用 L2 语义识别（需推理服务在线）")
+    enable_l3: bool | None = Field(default=None, description="是否启用 L3 本地大模型复核（需本地推理服务在线）")
     enable_ner: bool = Field(default=False, description="是否启用 L1.5 实体识别（人名/地址）")
     mask_level: str | None = Field(default=None, description="强制按该级别脱敏；任务落库不接受 SAFE")
     min_level: str = Field(default="SAFE", description="只返回 ≥ 该级别的结果（SAFE/L1/L2/L3）")
 
 
 class SpanOut(BaseModel):
+    coverage_types: list[str] = Field(default_factory=list)
     """命中区间：前端据此在原文上高亮（偏移是字符下标，不含敏感值本身）。"""
 
     start: int
@@ -50,6 +51,7 @@ class SpanOut(BaseModel):
 
 
 class SegmentOut(BaseModel):
+    requires_full_mask: bool = False
     path: str = Field(description="片段位置：JSON Path / 列名+行号 / SQL 语句+字面量")
     level: str
     score: float
@@ -57,6 +59,7 @@ class SegmentOut(BaseModel):
     hits: int
     masked: str = Field(description="脱敏副本（不含原文敏感值）")
     model_chain: str = Field(description="实际使用的模型链：l1 / l1>l2 / l1>l2>l3")
+    engine_runs: dict[str, str] = Field(default_factory=dict)
     reason: str | None = None
     degraded: bool = False
     direct: bool = False
@@ -64,6 +67,13 @@ class SegmentOut(BaseModel):
 
 
 class DetectOut(BaseModel):
+    result_id: str | None = None
+    source_fingerprint: str | None = None
+    ruleset_revision: str | None = None
+    policy_version: str | None = None
+    effective_options: dict[str, Any] = Field(default_factory=dict)
+    engine_runs: dict[str, dict[str, int]] = Field(default_factory=dict)
+    coverage: Literal["complete", "partial"] = "complete"
     content_type: str
     segments: int = Field(description="实际检测的片段数")
     findings: list[SegmentOut]
@@ -106,6 +116,9 @@ class FindingOut(BaseModel):
     rule_id: str | None = None
     degraded: bool = False
     created_at: str
+    type_labels: list[str] = Field(default_factory=list, description="类别中文名，顺序与 types 一致")
+    source: str = Field(default="", description="任务来源：文件名或 text")
+    content_type: str = Field(default="", description="任务内容形态：text/json/csv/sql/…")
 
 
 class FindingPage(BaseModel):
@@ -124,11 +137,17 @@ class TaskPage(BaseModel):
 
 class StatsOut(BaseModel):
     total_findings: int
-    tasks: int
+    tasks: int = Field(description="筛选范围内有检测记录的任务数（去重）")
     by_level: dict[str, int] = Field(description="分级分布（饼图）")
-    by_type: list[dict[str, Any]] = Field(description="类别 TopN（柱状图）")
+    by_type: list[dict[str, Any]] = Field(description="类别 TopN：type/label/count/hits/levels")
     score_histogram: dict[str, int] = Field(description="分数直方图")
     task_id: str | None = None
+    total_hits: int = 0
+    tasks_total: int = Field(default=0, description="全库任务总数（兼容旧 tasks 语义）")
+    by_day: list[dict[str, Any]] = Field(default_factory=list, description="按当地日趋势")
+    risk: dict[str, Any] = Field(default_factory=dict, description="告警处置口径的同筛选统计")
+    dimensions: dict[str, Any] = Field(default_factory=dict, description="维度字典（不受筛选影响）")
+    filter: dict[str, Any] = Field(default_factory=dict, description="当前筛选回显")
 
 
 class AlertOut(BaseModel):
@@ -141,6 +160,9 @@ class AlertOut(BaseModel):
     level_label: str = Field(description="级别中文名：高危 / 中危 / 低危")
     severity: str = Field(description="告警等级：紧急 / 重要 / 提示")
     types: list[str] = Field(description="英文类别键")
+    type_labels: list[str] = Field(default_factory=list, description="类别中文名，顺序与 types 一致")
+    source: str = Field(default="", description="任务来源：文件名或 text")
+    content_type: str = Field(default="", description="任务内容形态：text/json/csv/sql/…")
     score: float
     path: str = Field(description="触发告警的片段位置")
     title: str
@@ -166,6 +188,9 @@ class AlertSummaryOut(BaseModel):
     by_level: dict[str, int] = Field(description="按级别分布")
     by_status: dict[str, int] = Field(description="按状态分布")
     task_id: str | None = None
+    handled: int = Field(default=0, description="ack + ignored（已接手处置，不代表已完成）")
+    handled_ratio: float = Field(default=0.0, description="handled / total，total=0 时为 0.0")
+    open_by_level: dict[str, int] = Field(default_factory=dict, description="按级别的待处理数")
 
 
 class AlertAckIn(BaseModel):
@@ -364,8 +389,8 @@ class TrafficIngestIn(BaseModel):
     source: str = Field(default="agent", max_length=128, description="采集来源标识（会写进任务 source）")
     content_type: str = Field(default="ingest", max_length=32)
     segments: list[IngestSegmentIn] = Field(min_length=1, max_length=200)
-    enable_l2: bool = Field(default=False)
-    enable_l3: bool = Field(default=False)
+    enable_l2: bool | None = Field(default=None)
+    enable_l3: bool | None = Field(default=None)
     enable_ner: bool | None = Field(default=None)
     mask_level: str | None = Field(default=None)
     min_level: str = Field(default="SAFE")
@@ -390,8 +415,8 @@ class LiveStartIn(BaseModel):
     )
     interval_ms: int = Field(default=500, ge=100, le=10_000, description="轮询间隔（毫秒）")
     window_s: float = Field(default=2.0, ge=0.2, le=60.0, description="聚合窗口：每窗口生成一个任务")
-    enable_l2: bool = False
-    enable_l3: bool = False
+    enable_l2: bool | None = None
+    enable_l3: bool | None = None
     # None 表示“跟服务端默认走”（FLOWMASK_ENABLE_NER）；显式 true/false 则按本次请求
     enable_ner: bool | None = None
     mask_level: str | None = None
@@ -516,7 +541,9 @@ class ScenariosOut(BaseModel):
 class DetectExportRequest(BaseModel):
     """即时脱敏导出：同一请求内用内存里的原文重建文件，原文不落库。"""
 
-    text: str = Field(min_length=1, max_length=200_000, description="原文（文本/JSON/CSV/SQL 序列化后的字符串）")
+    text: str | None = Field(default=None, min_length=1, max_length=200_000, description="旧直接导出原文；快照导出可省略")
+    result_id: str | None = Field(default=None, max_length=128)
+    policy_version: str | None = Field(default=None, max_length=128)
     content_type: str = Field(
         default="text",
         description="原文形态：text / json / csv / sql / docx / xlsx（docx、xlsx 仅上传入口使用）",
@@ -529,8 +556,8 @@ class DetectExportRequest(BaseModel):
         default="auto",
         description="输出格式：auto（跟随 content_type）/ txt / json / csv / sql / docx / xlsx",
     )
-    enable_l2: bool = False
-    enable_l3: bool = False
+    enable_l2: bool | None = None
+    enable_l3: bool | None = None
     enable_ner: bool | None = None
     enable_keywords: bool | None = None
     min_level: str = Field(default="SAFE", description="只返回 ≥ 该级别的结果（不影响导出内容的完整脱敏）")
@@ -577,8 +604,13 @@ class AssistantAdviseIn(BaseModel):
     by_level: dict[str, int] = Field(default_factory=dict)
     by_type: list[dict[str, Any]] = Field(default_factory=list)
     total_findings: int = 0
-    tasks: int = 0
+    tasks: int = Field(default=0, description="筛选范围内有检测记录的任务数（不再表示待处理任务数）")
     scenario: str | None = None
+    scope: str = Field(default="", description="统计范围前缀，如「近 30 天」")
+    total_alerts: int = 0
+    open_alerts: int = 0
+    handled_ratio: float | None = Field(default=None, description="已处置告警占比；None 表示未提供")
+    open_by_level: dict[str, int] = Field(default_factory=dict)
 
 
 class AssistantAdviseOut(BaseModel):

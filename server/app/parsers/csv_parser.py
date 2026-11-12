@@ -37,12 +37,14 @@ def parse_csv(text: str, source: str = "data.csv") -> Document:
     ]
 
     segments: list[Segment] = []
+    coordinate_paths = len(set(columns)) != len(columns)
     for row_index, row in enumerate(data_rows, start=1):
         for column_index, cell in enumerate(row):
             if not cell.strip():
                 continue
             column = columns[column_index] if column_index < len(columns) else f"col{column_index + 1}"
-            segments.append(Segment(path=f"row{row_index}.{column}", text=cell, hint=column))
+            path = f'row{row_index}[{column_index}]' if coordinate_paths else f'row{row_index}.{column}'
+            segments.append(Segment(path=path, text=cell, hint=column, location=(row_index, column_index)))
 
     if not segments:
         raise ParseError("CSV 中没有可检测的单元格")

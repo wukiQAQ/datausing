@@ -15,6 +15,7 @@ from ..audit.chain import append_entry
 from ..core.config import Settings
 from ..identify import ENTITY_LABELS, Level
 from ..identify.pipeline import DetectOptions, sha256_text
+from ..security import SecurityError, protected_text
 from .deps import Operator, db_dep, operator_dep, pipeline_dep, settings_dep
 from .schemas import DynamicRenderIn, DynamicRenderOut, PolicyOut, SpanOut
 
@@ -37,7 +38,7 @@ POLICY_ROWS: tuple[dict[str, object], ...] = (
     {
         "level": "L1",
         "label": "低危",
-        "without_auth": "原文前加 [低危] 警示",
+        "without_auth": "保留风险警示，敏感值至少部分遮蔽",
         "with_auth": "展示原文",
     },
     {
@@ -82,7 +83,10 @@ def dynamic_render(
         enable_l3=settings.enable_l3,
         mask_level=_parse_mask_level(payload.mask_level),
     )
-    finding = pipeline.analyze_text(payload.text, options)
+    try:
+        finding = pipeline.analyze_text(payload.text, options)
+    except Exception:
+        raise SecurityError('DETECTION_FAILED', '检测失败，未返回原文', 503) from None
 
     if finding is None:
         level = Level.SAFE
@@ -93,7 +97,7 @@ def dynamic_render(
         confidence_vector: list[dict[str, object]] = []
     else:
         level = finding.level
-        masked = finding.masked
+        masked = protected_text(payload.text, finding, options.mask_level)
         spans = [SpanOut(**dict(span)) for span in finding.spans]
         types = list(finding.types)
         model_chain = finding.model_chain

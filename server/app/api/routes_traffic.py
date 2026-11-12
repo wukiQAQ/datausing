@@ -72,8 +72,8 @@ def traffic_sample() -> Response:
 )
 async def import_traffic(
     pcap: UploadFile = File(..., description="pcap / pcapng 文件"),
-    enable_l2: bool = False,
-    enable_l3: bool = False,
+    enable_l2: bool | None = None,
+    enable_l3: bool | None = None,
     enable_ner: bool | None = None,
     mask_level: str | None = None,
     min_level: str = "SAFE",
@@ -100,6 +100,7 @@ async def import_traffic(
         ) from exc
 
     options = build_options(
+        settings=settings,
         enable_l2=enable_l2,
         enable_l3=enable_l3,
         enable_ner=settings.enable_ner if enable_ner is None else enable_ner,
@@ -151,6 +152,7 @@ def ingest_traffic(
         meta={"format": "ingest", "source": payload.source, "segments": len(segments)},
     )
     options = build_options(
+        settings=settings,
         enable_l2=payload.enable_l2,
         enable_ner=settings.enable_ner if payload.enable_ner is None else payload.enable_ner,
         enable_l3=payload.enable_l3,
@@ -259,6 +261,7 @@ def live_start(
             status_code=status.HTTP_400_BAD_REQUEST, detail="该路径不是文件"
         )
     options = build_options(
+        settings=settings,
         enable_l2=payload.enable_l2,
         enable_l3=payload.enable_l3,
         enable_ner=settings.enable_ner if payload.enable_ner is None else payload.enable_ner,

@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 from .core.config import get_settings
 from .core.db import Database, utcnow_iso
+from .filters import parse_filter
 from .identify import Level, SegmentFinding, entity_label, parse_entity_type
 
 ALERT_STATUSES = ("open", "ack", "ignored")
@@ -123,7 +124,16 @@ def _row_to_alert(row: sqlite3.Row) -> dict[str, Any]:
     item["level_label"] = Level.parse(item["level"]).label
     item["severity"] = severity_label(Level.parse(item["level"]))
     item["status_label"] = ALERT_STATUS_LABELS.get(item["status"], item["status"])
+    # 与 findings 保持一致：类型中文名 + 任务来源/内容形态（LEFT JOIN 缺失时给空串）
+    item["type_labels"] = _type_labels(item["types"])
+    item["source"] = item.pop("task_source", None) or ""
+    item["content_type"] = item.pop("task_content_type", None) or ""
     return item
+
+
+def _alerts_base(clause: str) -> str:
+    """alerts + tasks 的统一 FROM 片段（content_type 筛选依赖 tasks）。"""
+    return f"FROM alerts f LEFT JOIN tasks t ON t.id=f.task_id {clause}"
 
 
 def page_alerts(
@@ -132,34 +142,47 @@ def page_alerts(
     task_id: str | None = None,
     level: str | None = None,
     status: str | None = None,
+    types: str | None = None,
+    content_type: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    days: int | None = None,
+    tz_offset: int = 0,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], int]:
-    """分页查告警；级别/状态非法时抛 ``ValueError``（接口层转 400）。"""
+    """分页查告警；级别/状态/时间/类型非法时抛 ``ValueError``（接口层转 400）。"""
     page = max(1, int(page))
     page_size = max(1, min(int(page_size), 100))
-    where: list[str] = []
-    params: list[Any] = []
-    if task_id:
-        where.append("task_id=?")
-        params.append(task_id)
-    if level:
-        try:
-            params.append(Level.parse(level).value)
-        except ValueError as exc:
+    try:
+        flt = parse_filter(
+            task_id=task_id,
+            level=level,
+            types=types,
+            content_type=content_type,
+            start=start,
+            end=end,
+            days=days,
+            tz_offset=tz_offset,
+            for_alerts=True,
+        )
+    except ValueError as exc:
+        # 保持既有告警接口的级别错误文案，前端提示不回归
+        if level and "级别" in str(exc):
             raise ValueError(f"告警级别非法：{level!r}（可选 L3/L2/L1/SAFE）") from exc
-        where.append("level=?")
+        raise
+    clause, params = flt.where_sql()
     if status:
         normalized = status.strip().lower()
         if normalized not in ALERT_STATUSES:
             raise ValueError(f"告警状态非法：{status!r}（可选 {', '.join(ALERT_STATUSES)}）")
-        where.append("status=?")
+        clause = f"{clause} AND f.status=?" if clause else "WHERE f.status=?"
         params.append(normalized)
-    clause = f"WHERE {' AND '.join(where)}" if where else ""
     with db.connect() as conn:
-        total = conn.execute(f"SELECT COUNT(*) FROM alerts {clause}", params).fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) {_alerts_base(clause)}", params).fetchone()[0]
         rows = conn.execute(
-            f"SELECT * FROM alerts {clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+            f"SELECT f.*, t.source AS task_source, t.content_type AS task_content_type "
+            f"{_alerts_base(clause)} ORDER BY f.id DESC LIMIT ? OFFSET ?",
             [*params, page_size, (page - 1) * page_size],
         ).fetchall()
     return [_row_to_alert(row) for row in rows], int(total)
@@ -167,7 +190,11 @@ def page_alerts(
 
 def get_alert(db: Database, alert_id: int) -> dict[str, Any] | None:
     with db.connect() as conn:
-        row = conn.execute("SELECT * FROM alerts WHERE id=?", (int(alert_id),)).fetchone()
+        row = conn.execute(
+            "SELECT f.*, t.source AS task_source, t.content_type AS task_content_type "
+            "FROM alerts f LEFT JOIN tasks t ON t.id=f.task_id WHERE f.id=?",
+            (int(alert_id),),
+        ).fetchone()
     return None if row is None else _row_to_alert(row)
 
 
@@ -200,24 +227,62 @@ def handle_alert(
     return get_alert(db, alert_id)
 
 
-def alert_summary(db: Database, task_id: str | None = None) -> dict[str, Any]:
-    """看板/角标用的汇总：总数、待处理数、按级别与按状态分布。"""
-    clause = "WHERE task_id=?" if task_id else ""
-    params: tuple[Any, ...] = (task_id,) if task_id else ()
+def alert_summary(
+    db: Database,
+    task_id: str | None = None,
+    *,
+    level: str | None = None,
+    types: str | None = None,
+    content_type: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    days: int | None = None,
+    tz_offset: int = 0,
+) -> dict[str, Any]:
+    """看板/角标用的汇总：总数、待处理、按级别与按状态分布、已处理比例。
+
+    与 /alerts 列表共用同一套筛选口径；``handled = ack + ignored``，
+    注意「已认领」只是有人接手，并不代表处置完成，因此比率字段名用 handled。
+    """
+    flt = parse_filter(
+        task_id=task_id,
+        level=level,
+        types=types,
+        content_type=content_type,
+        start=start,
+        end=end,
+        days=days,
+        tz_offset=tz_offset,
+        for_alerts=True,
+    )
+    clause, params = flt.where_sql()
     by_level = {level.value: 0 for level in Level if level != Level.SAFE}
+    open_by_level = {level.value: 0 for level in Level if level != Level.SAFE}
     by_status = {status: 0 for status in ALERT_STATUSES}
     with db.connect() as conn:
-        total = conn.execute(f"SELECT COUNT(*) FROM alerts {clause}", params).fetchone()[0]
-        for row in conn.execute(f"SELECT level, COUNT(*) AS n FROM alerts {clause} GROUP BY level", params):
-            by_level[row["level"]] = int(row["n"])
-        for row in conn.execute(f"SELECT status, COUNT(*) AS n FROM alerts {clause} GROUP BY status", params):
-            by_status[row["status"]] = int(row["n"])
+        total = conn.execute(f"SELECT COUNT(*) {_alerts_base(clause)}", params).fetchone()[0]
+        for row in conn.execute(
+            f"SELECT f.level AS level, f.status AS status, COUNT(*) AS n "
+            f"{_alerts_base(clause)} GROUP BY f.level, f.status",
+            params,
+        ):
+            count = int(row["n"])
+            if row["level"] in by_level:
+                by_level[row["level"]] += count
+            if row["level"] in open_by_level and row["status"] == "open":
+                open_by_level[row["level"]] += count
+            if row["status"] in by_status:
+                by_status[row["status"]] += count
+    handled = by_status["ack"] + by_status["ignored"]
     return {
         "total": int(total),
         "open": by_status.get("open", 0),
         "by_level": by_level,
         "by_status": by_status,
         "task_id": task_id,
+        "handled": handled,
+        "handled_ratio": round(handled / total, 4) if total else 0.0,
+        "open_by_level": open_by_level,
     }
 
 

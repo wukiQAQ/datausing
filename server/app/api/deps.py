@@ -120,8 +120,9 @@ def reset_pipeline_for_tests() -> None:
 
 def build_options(
     *,
-    enable_l2: bool = False,
-    enable_l3: bool = False,
+    settings: Settings,
+    enable_l2: bool | None = None,
+    enable_l3: bool | None = None,
     enable_ner: bool = False,
     enable_keywords: bool | None = None,
     mask_level: str | None = None,
@@ -134,8 +135,8 @@ def build_options(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return DetectOptions(
-        enable_l2=enable_l2,
-        enable_l3=enable_l3,
+        enable_l2=settings.enable_l2 if enable_l2 is None else enable_l2,
+        enable_l3=settings.enable_l3 if enable_l3 is None else enable_l3,
         enable_ner=enable_ner,
         enable_keywords=enable_keywords,
         mask_level=parsed_mask,

@@ -5,7 +5,16 @@ import vue from "@vitejs/plugin-vue";
 export default defineConfig({
   base: "/app/",
   plugins: [vue()],
-  build: { outDir: "dist", emptyOutDir: true, chunkSizeWarningLimit: 1200 },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: { charts: ["echarts"], components: ["element-plus"] },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: { "/api": "http://127.0.0.1:8090" },

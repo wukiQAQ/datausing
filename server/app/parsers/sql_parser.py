@@ -37,8 +37,41 @@ def _insert_columns(statement: str) -> list[str]:
 
 def _hint_for(statement: str, literal_start: int, index: int, insert_columns: list[str]) -> str:
     """给一个字面量找字段名：INSERT 按列清单对齐，其余按 ``列名 =`` 回看。"""
-    if insert_columns and index < len(insert_columns):
-        return insert_columns[index]
+    if insert_columns:
+        match = _INSERT_RE.search(statement)
+        cursor = match.end() - 1
+        depth, column = 0, 0
+        while cursor < literal_start:
+            char = statement[cursor]
+            if char in ("'", '"'):
+                quote = char
+                cursor += 1
+                while cursor < literal_start:
+                    if statement[cursor] == quote:
+                        if cursor + 1 < literal_start and statement[cursor + 1] == quote:
+                            cursor += 2
+                            continue
+                        break
+                    cursor += 1
+            elif statement.startswith('--', cursor):
+                end = statement.find('\n', cursor)
+                cursor = literal_start if end < 0 else end
+                continue
+            elif statement.startswith('/*', cursor):
+                end = statement.find('*/', cursor + 2)
+                cursor = literal_start if end < 0 else end + 2
+                continue
+            elif char == '(':
+                if depth == 0:
+                    column = 0
+                depth += 1
+            elif char == ')':
+                depth -= 1
+            elif char == ',' and depth == 1:
+                column += 1
+            cursor += 1
+        if 0 <= column < len(insert_columns):
+            return insert_columns[column]
     match = _COLUMN_BEFORE_RE.search(statement[:literal_start])
     return match.group(1) if match else ""
 

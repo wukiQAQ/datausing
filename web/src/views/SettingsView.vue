@@ -1,10 +1,13 @@
 <script setup>
+import { safeError } from "../workspace";
+import PageHeader from "../components/PageHeader.vue";
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 
 // ---------------------------------------------------------------------------
 // 模型与助手：进入页面就查一次，之后靠「刷新状态」手动刷新（模型可能后启动）
 // ---------------------------------------------------------------------------
+const section = ref("capabilities");
 const health = ref(null);
 const models = ref(null);
 const healthLoading = ref(false);
@@ -42,20 +45,24 @@ async function loadHealth() {
   healthError.value = "";
   try {
     // 两个接口各查各的：models 失败不应让健康状态一起空白
-    const results = await Promise.allSettled([api.fetchAssistantHealth(), api.fetchAssistantModels()]);
+    const results = await Promise.allSettled([
+      api.fetchAssistantHealth(),
+      api.fetchAssistantModels(),
+    ]);
     const [healthResult, modelsResult] = results;
     if (healthResult.status === "fulfilled") {
       health.value = healthResult.value;
     } else {
       throw healthResult.reason;
     }
-    models.value = modelsResult.status === "fulfilled" ? modelsResult.value : null;
+    models.value =
+      modelsResult.status === "fulfilled" ? modelsResult.value : null;
     if (modelsResult.status === "rejected") {
       healthError.value = `模型列表读取失败（不影响状态展示）：${modelsResult.reason}`;
     }
   } catch (err) {
     health.value = null;
-    healthError.value = `助手状态读取失败：${err}`;
+    healthError.value = `助手状态读取失败：${safeError(err)}`;
   } finally {
     healthLoading.value = false;
   }
@@ -83,7 +90,7 @@ async function loadStrategies() {
     defaultStrategy.value = body.default || "partial";
   } catch (err) {
     strategies.value = [];
-    strategiesError.value = `脱敏策略加载失败：${err}`;
+    strategiesError.value = `脱敏策略加载失败：${safeError(err)}`;
   } finally {
     strategiesLoading.value = false;
   }
@@ -98,7 +105,8 @@ const scenariosError = ref("");
 const selectedScenario = ref("");
 
 const activeScenario = computed(
-  () => scenarios.value.find((item) => item.key === selectedScenario.value) || null
+  () =>
+    scenarios.value.find((item) => item.key === selectedScenario.value) || null,
 );
 
 function selectScenario(row) {
@@ -113,7 +121,7 @@ async function loadScenarios() {
     scenarios.value = body.scenarios || [];
   } catch (err) {
     scenarios.value = [];
-    scenariosError.value = `场景模板加载失败：${err}`;
+    scenariosError.value = `场景模板加载失败：${safeError(err)}`;
   } finally {
     scenariosLoading.value = false;
   }
@@ -167,25 +175,49 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="panel">
+  <PageHeader
+    title="设置与策略"
+    description="了解本机能力、脱敏策略和场景模板，明确数据保留边界。"
+    index="PREFERENCES"
+  />
+  <el-tabs v-model="section"
+    ><el-tab-pane name="capabilities" label="本机能力" /><el-tab-pane
+      name="policies"
+      label="策略与场景库" /><el-tab-pane name="help" label="使用与安全说明"
+  /></el-tabs>
+  <div v-show="section === 'capabilities'" class="panel">
     <div class="panel-title">
       模型与助手
       <span class="hint">只读状态：模型与助手都由服务端环境变量配置</span>
     </div>
     <div class="toolbar">
-      <el-button size="small" :loading="healthLoading" @click="loadHealth">刷新状态</el-button>
+      <el-button size="small" :loading="healthLoading" @click="loadHealth"
+        >刷新状态</el-button
+      >
       <el-tag v-if="health" size="small" :type="healthTagType">
         {{ health.available ? "可用" : "当前不可用" }}
       </el-tag>
     </div>
-    <el-alert v-if="healthError" type="error" :closable="false" show-icon style="margin-top: 12px">
+    <el-alert
+      v-if="healthError"
+      type="error"
+      :closable="false"
+      show-icon
+      style="margin-top: 12px"
+    >
       {{ healthError }}
     </el-alert>
     <div v-loading="healthLoading" style="margin-top: 12px">
       <template v-if="health">
         <dl class="kv">
           <dt>助手开关</dt>
-          <dd>{{ health.enabled ? "已启用" : "已停用（FLOWMASK_ASSISTANT_ENABLED=0）" }}</dd>
+          <dd>
+            {{
+              health.enabled
+                ? "已启用"
+                : "已停用（FLOWMASK_ASSISTANT_ENABLED=0）"
+            }}
+          </dd>
           <dt>模式</dt>
           <dd>{{ modeLabel }}</dd>
           <dt>状态说明</dt>
@@ -204,24 +236,42 @@ onMounted(async () => {
       <div v-else class="empty">还没有取到助手状态</div>
     </div>
     <div class="hint-line">
-      配置方式（服务端环境变量，前端只读）：<code>FLOWMASK_ASSISTANT_MODE</code>（rules / ollama）、
-      <code>FLOWMASK_ASSISTANT_ENDPOINT</code>（Ollama 地址，默认 http://127.0.0.1:11434/api/generate）、
-      <code>FLOWMASK_ASSISTANT_MODEL</code>（模型名，如 qwen2.5:1.5b）。改完需要重启服务。
+      配置方式（服务端环境变量，前端只读）：<code>FLOWMASK_ASSISTANT_MODE</code>（rules
+      / ollama）、
+      <code>FLOWMASK_ASSISTANT_ENDPOINT</code>（Ollama 地址，默认
+      http://127.0.0.1:11434/api/generate）、
+      <code>FLOWMASK_ASSISTANT_MODEL</code>（模型名，如
+      qwen2.5:1.5b）。改完需要重启服务。
     </div>
   </div>
 
-  <div class="panel">
+  <div v-show="section === 'policies'" class="panel">
     <div class="panel-title">
       脱敏策略与场景
-      <span class="hint">策略说明与场景模板都来自服务端，选场景可按推荐配置一键套用</span>
+      <span class="hint"
+        >策略说明与场景模板都来自服务端，选场景可按推荐配置一键套用</span
+      >
     </div>
     <div class="toolbar">
-      <el-button size="small" :loading="strategiesLoading" @click="loadStrategies">刷新策略</el-button>
-      <el-button size="small" :loading="scenariosLoading" @click="loadScenarios">刷新场景</el-button>
+      <el-button
+        size="small"
+        :loading="strategiesLoading"
+        @click="loadStrategies"
+        >刷新策略</el-button
+      >
+      <el-button size="small" :loading="scenariosLoading" @click="loadScenarios"
+        >刷新场景</el-button
+      >
       <span class="hint">默认策略：{{ strategyLabel(defaultStrategy) }}</span>
     </div>
 
-    <el-alert v-if="strategiesError" type="error" :closable="false" show-icon style="margin-top: 12px">
+    <el-alert
+      v-if="strategiesError"
+      type="error"
+      :closable="false"
+      show-icon
+      style="margin-top: 12px"
+    >
       {{ strategiesError }}
     </el-alert>
     <el-table
@@ -229,7 +279,9 @@ onMounted(async () => {
       :data="strategies"
       stripe
       style="margin-top: 12px"
-      :row-style="({ row }) => (row.key === defaultStrategy ? { fontWeight: 600 } : {})"
+      :row-style="
+        ({ row }) => (row.key === defaultStrategy ? { fontWeight: 600 } : {})
+      "
     >
       <el-table-column label="策略" width="150">
         <template #default="scope">
@@ -238,9 +290,12 @@ onMounted(async () => {
         </template>
       </el-table-column>
       <el-table-column prop="description" label="说明" show-overflow-tooltip />
-      <el-table-column label="可逆行" width="100">
+      <el-table-column label="可逆性" width="100">
         <template #default="scope">
-          <el-tag :type="scope.row.reversible ? 'warning' : 'info'" size="small">
+          <el-tag
+            :type="scope.row.reversible ? 'warning' : 'info'"
+            size="small"
+          >
             {{ scope.row.reversible ? "可还原" : "不可逆" }}
           </el-tag>
         </template>
@@ -258,9 +313,17 @@ onMounted(async () => {
         </template>
       </el-table-column>
     </el-table>
-    <div v-else-if="!strategiesLoading && !strategiesError" class="empty">没有可展示的策略</div>
+    <div v-else-if="!strategiesLoading && !strategiesError" class="empty">
+      没有可展示的策略
+    </div>
 
-    <el-alert v-if="scenariosError" type="error" :closable="false" show-icon style="margin-top: 12px">
+    <el-alert
+      v-if="scenariosError"
+      type="error"
+      :closable="false"
+      show-icon
+      style="margin-top: 12px"
+    >
       {{ scenariosError }}
     </el-alert>
     <el-table
@@ -279,7 +342,9 @@ onMounted(async () => {
       </el-table-column>
       <el-table-column prop="description" label="用途" show-overflow-tooltip />
       <el-table-column label="推荐策略" width="130">
-        <template #default="scope">{{ strategyLabel(scope.row.strategy) }}</template>
+        <template #default="scope">{{
+          strategyLabel(scope.row.strategy)
+        }}</template>
       </el-table-column>
       <el-table-column label="级别" width="150">
         <template #default="scope">
@@ -290,17 +355,28 @@ onMounted(async () => {
         <template #default="scope">{{ scope.row.retention || "—" }}</template>
       </el-table-column>
     </el-table>
-    <div v-else-if="!scenariosLoading && !scenariosError" class="empty">没有可展示的场景模板</div>
-    <el-alert v-if="activeScenario" type="info" :closable="false" show-icon style="margin-top: 12px">
-      <b>{{ activeScenario.label }}</b> · 脱敏级别 {{ activeScenario.mask_level }} · 最低 {{ activeScenario.min_level }} ·
+    <div v-else-if="!scenariosLoading && !scenariosError" class="empty">
+      没有可展示的场景模板
+    </div>
+    <el-alert
+      v-if="activeScenario"
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-top: 12px"
+    >
+      <b>{{ activeScenario.label }}</b> · 脱敏级别
+      {{ activeScenario.mask_level }} · 最低 {{ activeScenario.min_level }} ·
       策略 {{ strategyLabel(activeScenario.strategy) }}<br />
       {{ activeScenario.description }}<br />
       数据保留：{{ activeScenario.retention || "无额外说明" }}
     </el-alert>
-    <div v-if="scenarios.length" class="hint-line">点表格行可展开/收起该场景的数据保留说明。</div>
+    <div v-if="scenarios.length" class="hint-line">
+      点表格行可展开/收起该场景的数据保留说明。
+    </div>
   </div>
 
-  <div class="panel">
+  <div v-show="section === 'help'" class="panel">
     <div class="panel-title">
       常见问题
       <span class="hint">能力边界与配置方式，按实际情况说明</span>

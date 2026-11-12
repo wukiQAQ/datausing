@@ -71,25 +71,36 @@ def test_judge_risk_levels(judge_endpoint, payload: dict[str, str], want_level: 
     assert verdict is not None and verdict.level == want_level
 
 
-def test_judge_degraded_and_unknown_risk_return_none(judge_endpoint) -> None:
+def test_judge_degraded_and_unknown_risk(judge_endpoint) -> None:
     endpoint, server = judge_endpoint
     server.payload = {"risk": "", "degraded": True, "reason": "模型异常"}
-    assert HttpJudgeClassifier(endpoint, "m", 2.0).judge("x") is None
+    with pytest.raises(ValueError):
+        HttpJudgeClassifier(endpoint, "m", 2.0).judge("x")
 
     server.payload = {"risk": "Maybe", "reason": "?"}
     assert HttpJudgeClassifier(endpoint, "m", 2.0).judge("x") is None
 
 
-def test_judge_unreachable_endpoint_returns_none() -> None:
-    # 回环上挑一个几乎不可能被占用的端口：连接失败即降级为 None
-    client = HttpJudgeClassifier("http://127.0.0.1:9/v1/judge", "m", 0.5)
-    assert client.judge("x") is None
+@pytest.mark.parametrize("cause, error", [
+    (ConnectionRefusedError(), ConnectionError),
+    (TimeoutError(), TimeoutError),
+])
+def test_judge_distinguishes_network_failures(monkeypatch, cause, error) -> None:
+    from urllib.error import URLError
+
+    def fail(*args, **kwargs):
+        raise URLError(cause)
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    client = HttpJudgeClassifier("http://localhost/v1/judge", "m", 0.5)
+    with pytest.raises(error):
+        client.judge("x")
 
 
 def test_build_guard_classifier_modes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("FLOWMASK_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("FLOWMASK_ENABLE_L3", "0")
-    assert build_guard_classifier(Settings.load()) is None
+    assert isinstance(build_guard_classifier(Settings.load()), HttpJudgeClassifier)
 
     monkeypatch.setenv("FLOWMASK_ENABLE_L3", "1")
     monkeypatch.setenv("FLOWMASK_L3_MODE", "http")

@@ -231,7 +231,7 @@ def _parse_llm_advice(raw: str) -> dict[str, object] | None:
         if isinstance(parsed.get("recommendations"), (list, tuple)) else []
     if not summary or (not findings and not recommendations):
         return None
-    return {"summary": summary[:300], "findings": findings[:3], "recommendations": recommendations[:3]}
+    return {"summary": summary[:300], "findings": findings[:3], "recommendations": recommendations[:4]}
 
 
 # 类别 key 到中文展示名（by_type 通常来自检测管道的类型统计）
@@ -425,57 +425,108 @@ class Assistant:
         scenario = get_scenario(payload.get("scenario")) if isinstance(payload.get("scenario"), str) else None
         danger = _danger_count(by_level)
         safe = by_level.get("SAFE", 0)
+        # 看板可传范围前缀、告警积压与已处理比例；缺省时保持旧行为
+        scope = str(payload.get("scope") or "").strip()
+        total_alerts = _to_int(payload.get("total_alerts"))
+        open_alerts = _to_int(payload.get("open_alerts"))
+        open_by_level = _normalize_level_counts(payload.get("open_by_level"))
+        try:
+            handled_ratio: float | None = (
+                None if payload.get("handled_ratio") is None else float(payload.get("handled_ratio"))
+            )
+        except (TypeError, ValueError):
+            handled_ratio = None
+        has_alert_info = bool(total_alerts or open_alerts or handled_ratio is not None)
 
         def percent(part: int) -> int:
             return int(round(part * 100.0 / total)) if total > 0 else 0
 
         top = by_type[0] if by_type else None
         top_name = self._type_label(top[0]) if top else ""
+        # 最高等级：只看 L1~L3，SAFE 不参与风险结论
+        top_level = next((level for level in ("L3", "L2", "L1") if by_level.get(level, 0) > 0), "")
+        top_level_count = by_level.get(top_level, 0) if top_level else 0
 
-        summary_parts = [f"共 {total} 条检测结果"]
+        summary_parts = [f"{scope}共 {total} 条检测结果" if scope else f"共 {total} 条检测结果"]
         if total:
             summary_parts.append(f"其中高危 {danger} 条（{percent(danger)}%）、安全 {safe} 条（{percent(safe)}%）")
         if tasks:
-            summary_parts.append(f"{tasks} 个任务待处理")
-        elif total:
-            summary_parts.append("当前没有待处理任务")
+            # tasks 是「筛选范围内有检测记录的任务数」，不是待处理任务数
+            summary_parts.append(f"共覆盖 {tasks} 个任务")
+        if total_alerts:
+            summary_parts.append(f"告警 {total_alerts} 条、其中 {open_alerts} 条待处理")
         if scenario is not None:
             summary_parts.append(f"业务场景「{scenario.label}」")
         summary = "，".join(summary_parts) + "。"
 
         findings: list[str] = []
-        if total and danger:
+        if total and top_level:
             findings.append(
-                f"高危（L3）占比约 {percent(danger)}%，"
-                + (f"其中{top_name}类命中最多，建议优先复核。" if top_name else "建议优先复核。")
+                f"最高等级 {top_level} 命中 {top_level_count} 条，占全部检测结果的 {percent(top_level_count)}%。"
             )
-        if total and safe * 100 >= total * 60:
-            findings.append(f"安全（SAFE）数据占比约 {percent(safe)}%，大部分内容可按业务正常流转。")
-        if top is not None and top_name and not danger:
-            findings.append(f"按类别看，{top_name}是当前命中热点（{top[1]} 条）。")
-        if tasks == 0 and total > 0:
-            findings.append("已有检测结果但尚无任务记录，建议核对是否遗漏落库与审计留痕。")
+        elif total and danger:
+            findings.append(f"最高等级 L3 命中 {danger} 条，占全部检测结果的 {percent(danger)}%。")
+        if top is not None and top_name:
+            findings.append(
+                f"最集中的敏感类型是{top_name}（{top[1]} 条，占 {percent(top[1])}%），建议优先复核。"
+            )
+        if open_alerts:
+            detail = "、".join(
+                f"{level} {open_by_level.get(level, 0)} 条"
+                for level in ("L3", "L2", "L1")
+                if open_by_level.get(level, 0)
+            )
+            findings.append(f"待处理告警 {open_alerts} 条" + (f"（{detail}）" if detail else "") + "，需尽快进入处置队列。")
+        if handled_ratio is not None:
+            findings.append(
+                f"已处理告警占比 {handled_ratio:.0%}：已认领≠已完成，认领后仍需跟踪实际处置结果。"
+            )
         if not findings:
             findings.append("整体风险平稳：当前聚合数据里没有明显的高危或未处理项。")
-        findings = findings[:3]
+        findings = findings[:4]
 
         recommendations: list[str] = []
         if danger:
-            name = top_name or "高危"
-            recommendations.append(f"建议对 DANGER 占比最高的{name}类检测开启 L2 复核，导出时强制 L3 脱敏。")
+            recommendations.append(
+                f"L3 高危共 {danger} 条（占 {percent(danger)}%），建议优先处置，导出时强制 L3 脱敏。"
+            )
+        # 按命中类型给具体动作：凭据/身份/账户类整段屏蔽，联系方式类保留首字符掩码
+        for type_key, count in by_type[:2]:
+            recommendations.append(self._type_action(type_key, self._type_label(type_key)))
+        if has_alert_info:
+            recommendations.append(
+                f"当前有 {open_alerts} 条待处理告警，建议进入处置队列按级别优先处理高危项。"
+            )
+        if tasks:
+            recommendations.append(f"建议对 {tasks} 个任务逐条复核，并在任务里保留审计留痕。")
         if total and safe * 100 >= total * 50:
             recommendations.append("建议按密级为 SAFE 的数据批量导出时使用 hash 策略，保留统计与建模可用性。")
-        if tasks:
-            recommendations.append(f"建议对 {tasks} 个待处理任务逐条复核，并在任务里保留审计留痕。")
         if scenario is not None:
             recommendations.append(
                 f"建议沿用场景「{scenario.label}」参数：{scenario.strategy} 策略、强制 {scenario.mask_level} 脱敏。"
             )
         if not recommendations:
             recommendations.append("建议保持当前策略并定期巡检，出现高危聚集时再提升脱敏强度。")
-        recommendations = recommendations[:3]
+        # 有告警积压信息时最多 4 条；旧调用方（无告警字段）仍保持最多 3 条
+        recommendations = recommendations[: 4 if has_alert_info else 3]
 
         return {"summary": summary, "findings": findings, "recommendations": recommendations, "source": SOURCE_RULES}
+
+    @staticmethod
+    def _type_action(type_key: str, type_name: str) -> str:
+        """按敏感类型给出脱敏动作（凭据类屏蔽并轮换，联系方式类首字符掩码）。"""
+        key = str(type_key or "").strip().lower()
+        name = type_name or key or "敏感"
+        if key in {"id_card", "idcard", "bank_card", "secret", "token", "api_key", "password", "medical"}:
+            action = f"建议对{name}类命中整段屏蔽（block），不保留任何片段"
+            if key in {"secret", "token", "api_key", "password"}:
+                action += "，并立即轮换相关凭据。"
+            else:
+                action += "，导出时强制 L3 脱敏。"
+            return action
+        if key in {"phone", "mobile", "email", "name", "address", "ip"}:
+            return f"建议对{name}类命中保留首字符掩码（partial），其余字符按固定长度替换。"
+        return f"建议对{name}类命中按密级复核，导出时按密级强制脱敏。"
 
     def _type_counts(self, by_type: object) -> list[tuple[str, int]]:
         """把 by_type 归一化成 [(类别, 计数)]，按计数降序、类别升序。"""
@@ -584,14 +635,21 @@ class Assistant:
         by_type = self._type_counts(payload.get("by_type"))[:8]
         total = _to_int(payload.get("total_findings")) or sum(by_level.values())
         tasks = _to_int(payload.get("tasks"))
+        total_alerts = _to_int(payload.get("total_alerts"))
+        open_alerts = _to_int(payload.get("open_alerts"))
+        handled_ratio = payload.get("handled_ratio")
+        scope = str(payload.get("scope") or "").strip()
         scenario = get_scenario(payload.get("scenario")) if isinstance(payload.get("scenario"), str) else None
         return (
             "你是安全运营分析员。根据下面的聚合统计（不包含任何原文）写风险研判，"
             "严格只输出一行 JSON（不要 markdown 代码块），字段必须是：\n"
             '{"summary": "中文一句话总览", "findings": ["1~3 条中文发现"], '
-            '"recommendations": ["1~3 条中文可执行建议"]}\n'
+            '"recommendations": ["1~4 条中文可执行建议"]}\n'
+            f"统计范围：{scope or '全部'}\n"
             f"级别计数：{json.dumps(by_level, ensure_ascii=False)}\n"
             f"类别命中：{json.dumps({name: count for name, count in by_type}, ensure_ascii=False)}\n"
-            f"检测总数：{total}\n待处理任务：{tasks}\n"
+            f"检测总数：{total}\n共覆盖任务：{tasks}\n"
+            f"告警总数：{total_alerts}\n待处理告警：{open_alerts}\n"
+            f"已处理比例：{'未知' if handled_ratio is None else handled_ratio}\n"
             f"业务场景：{scenario.label if scenario else '未指定'}"
         )

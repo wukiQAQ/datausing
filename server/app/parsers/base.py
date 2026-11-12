@@ -15,7 +15,7 @@ class Segment:
     """一段待检测文本。
 
     ``offset`` 是它在原文中的字符偏移（未知时为 -1）。有偏移的格式（text/sql）
-    可以按区间回写；结构化格式（json/csv）用 ``path`` 定位字段，导出时按字段回填。
+    可以按区间回写；结构化格式（json/csv）用类型化 ``location`` 回填，path用于显示。
     """
 
     path: str
@@ -24,6 +24,8 @@ class Segment:
     # 字段名/列名（JSON 键、CSV 表头、SQL 列名）：结构化数据里"键"本身就是语义上下文，
     # 检测时把它拼在值前面（如 ``api_key: sk-...``）能显著提升 L1 命中率，脱敏只作用在值上。
     hint: str = ""
+    # 类型化位置用于回写；path只是兼容的显示标识。
+    location: tuple[str | int, ...] | None = None
 
 
 @dataclass(slots=True)

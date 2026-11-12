@@ -7,6 +7,7 @@ from app.identify.l2 import SemanticHit
 from app.identify.l3 import GuardVerdict
 from app.identify.pipeline import sha256_text
 from app.parsers import parse_json, parse_text
+from app.parsers.base import Document, Segment
 
 ID_CARD = "11010519491231002X"
 PHONE = "13800138000"
@@ -90,6 +91,48 @@ def test_l2_exception_marks_degraded() -> None:
     )
     assert report.degraded is True
     assert report.findings[0].model_chain == "l1"
+    assert report.engine_runs["l2"] == {"timeout": 1}
+    assert report.coverage == "partial"
+
+
+def test_engine_status_counts_include_skipped_and_filtered_segments() -> None:
+    document = Document(source="test", content_type="text", raw="", segments=[
+        Segment(path="safe", text="今天天气晴朗"),
+        Segment(path="phone", text=PHONE),
+        Segment(path="id", text=ID_CARD),
+    ])
+    report = DetectionPipeline().analyze_document(
+        document, DetectOptions(enable_l2=True, enable_l3=True, min_level=Level.HIGH),
+    )
+    assert report.engine_runs == {
+        "l2": {"skipped": 1, "unavailable": 2},
+        "l3": {"skipped": 2, "unavailable": 1},
+    }
+    assert report.degraded and report.coverage == "partial"
+    assert [finding.path for finding in report.findings] == ["id"]
+
+
+def test_l2_evidence_survives_rebasing() -> None:
+    pipeline = DetectionPipeline(semantic=FakeSemantic())
+    document = parse_json('{"phone":"１３８００１３８０００"}')
+    baseline = pipeline.analyze_document(document, DetectOptions()).findings[0]
+    finding = pipeline.analyze_document(document, DetectOptions(enable_l2=True)).findings[0]
+    assert "medical" in finding.types
+    assert finding.score > baseline.score
+    assert (finding.spans[0]["start"], finding.spans[0]["end"]) == (0, 11)
+
+
+def test_l2_empty_prediction_is_executed() -> None:
+    class EmptySemantic(FakeSemantic):
+        def predict(self, text):
+            return []
+
+    report = DetectionPipeline(semantic=EmptySemantic()).analyze_document(
+        parse_text(PHONE), DetectOptions(enable_l2=True),
+    )
+    assert report.engine_runs["l2"] == {"executed": 1}
+    assert report.findings[0].model_chain == "l1>l2"
+    assert report.coverage == "complete"
 
 
 def test_l3_unsafe_upgrade_capped_by_max_target(monkeypatch) -> None:

@@ -8,7 +8,7 @@
 ; 数据在 %LOCALAPPDATA%\FlowMask\data（首次启动自动创建），卸载时保留数据目录。
 
 #define MyAppName "FlowMask"
-#define MyAppVersion "0.26.0"
+#define MyAppVersion "0.27.2"
 #define MyAppPublisher "FlowMask"
 #define MyAppExeName "FlowMask.exe"
 

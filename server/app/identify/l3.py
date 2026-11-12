@@ -11,12 +11,11 @@
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
 from ..core.config import Settings
+from .inference import post_json
 from .types import Level
 
 GUARD_PROMPT = """你是数据安全审核员。判断下面这段文本是否包含需要保护的敏感个人信息，
@@ -92,18 +91,7 @@ class OllamaGuardClassifier:
     def judge(self, text: str) -> GuardVerdict | None:
         prompt = GUARD_PROMPT.format(content=text[:2000])
         payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-        request = urllib.request.Request(
-            self.endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-            return None
-
+        body = post_json(self.endpoint, payload, self.timeout_s)
         raw = body.get("response", "")
         try:
             parsed = json.loads(raw) if isinstance(raw, str) else dict(raw)
@@ -135,19 +123,7 @@ class HttpJudgeClassifier:
 
     def judge(self, text: str) -> GuardVerdict | None:
         payload = {"text": text[:4000]}
-        request = urllib.request.Request(
-            self.endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-            return None
-        if not isinstance(body, dict) or body.get("degraded"):
-            return None
+        body = post_json(self.endpoint, payload, self.timeout_s)
         risk = str(body.get("risk", "")).strip()
         if risk.lower() not in {"safe", "controversial", "unsafe"}:
             return None
@@ -167,12 +143,13 @@ class HttpJudgeClassifier:
 
 
 def build_guard_classifier(settings: Settings) -> GuardClassifier | None:
-    """按配置构造 L3 客户端；未启用时返回 None。
+    """按端点和后端模式构造 L3 客户端。
 
     ``L3_MODE`` 决定调用方式：``http``（本仓 l3_service）/ ``ollama``（/api/generate）。
     """
-    if not settings.enable_l3:
+    endpoint = settings.l3_endpoint.strip()
+    if not endpoint:
         return None
     if settings.l3_mode == "ollama":
-        return OllamaGuardClassifier(settings.l3_endpoint, settings.l3_model, settings.l3_timeout_s)
-    return HttpJudgeClassifier(settings.l3_endpoint, settings.l3_model, settings.l3_timeout_s)
+        return OllamaGuardClassifier(endpoint, settings.l3_model, settings.l3_timeout_s)
+    return HttpJudgeClassifier(endpoint, settings.l3_model, settings.l3_timeout_s)

@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 
 from ..core.config import Settings
 from ..core.db import Database
@@ -28,8 +28,8 @@ MAX_BATCH_FILES = 20
 @router.post("/tasks", response_model=TaskCreateOut, summary="提交任务：上传文件")
 async def create_file_task(
     file: UploadFile = File(..., description="txt/json/csv/sql（Word/PDF 待接入）"),
-    enable_l2: bool = False,
-    enable_l3: bool = False,
+    enable_l2: bool | None = None,
+    enable_l3: bool | None = None,
     enable_ner: bool = False,
     mask_level: str | None = None,
     min_level: str = "SAFE",
@@ -47,8 +47,9 @@ async def create_file_task(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     options = build_options(
-        enable_l2=enable_l2 or settings.enable_l2,
-        enable_l3=enable_l3 or settings.enable_l3,
+        settings=settings,
+        enable_l2=enable_l2,
+        enable_l3=enable_l3,
         enable_ner=enable_ner or settings.enable_ner,
         mask_level=mask_level,
         min_level=min_level,
@@ -77,8 +78,9 @@ def create_text_task(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text 不能为空")
     document = parse_text_input(text, source="text")
     options = build_options(
-        enable_l2=payload.enable_l2 or settings.enable_l2,
-        enable_l3=payload.enable_l3 or settings.enable_l3,
+        settings=settings,
+        enable_l2=payload.enable_l2,
+        enable_l3=payload.enable_l3,
         enable_ner=payload.enable_ner or settings.enable_ner,
         mask_level=payload.mask_level,
         min_level=payload.min_level,
@@ -101,9 +103,11 @@ def create_text_task(
     summary="批量提交任务：一次上传多个文件",
 )
 async def create_batch_tasks(
+    request: Request,
+    response: Response,
     files: list[UploadFile] = File(..., description=f"一次最多 {MAX_BATCH_FILES} 个文件"),
-    enable_l2: bool = False,
-    enable_l3: bool = False,
+    enable_l2: bool | None = None,
+    enable_l3: bool | None = None,
     enable_ner: bool = False,
     mask_level: str | None = None,
     min_level: str = "SAFE",
@@ -126,13 +130,16 @@ async def create_batch_tasks(
         )
 
     options = build_options(
-        enable_l2=enable_l2 or settings.enable_l2,
-        enable_l3=enable_l3 or settings.enable_l3,
+        settings=settings,
+        enable_l2=enable_l2,
+        enable_l3=enable_l3,
         enable_ner=enable_ner or settings.enable_ner,
         mask_level=mask_level,
         min_level=min_level,
     )
     limit = settings.max_upload_mb * 1024 * 1024
+    from .routes_detect import _owner
+    comparison_owner = _owner(request, response)
     items: list[BatchItemOut] = []
     for upload in files:
         name = upload.filename or "upload"
@@ -156,6 +163,8 @@ async def create_batch_tasks(
             document=document,
             options=options,
             pipeline=pipeline,
+            comparison_owner=comparison_owner,
+            comparison_secret=settings.export_secret,
         )
         items.append(
             BatchItemOut(
@@ -248,3 +257,33 @@ def export_task(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# 对比响应可能含原文，成功与失败路径都不得被缓存（错误路径见 security_error_response）。
+_COMPARE_HEADERS = {'Cache-Control': 'no-store', 'Pragma': 'no-cache'}
+
+
+@router.get('/tasks/{task_id}/comparison', summary='当前会话的临时文档对比')
+def task_comparison(task_id: str, request: Request, response: Response,
+                    settings: Settings = Depends(settings_dep), db: Database = Depends(db_dep)):
+    from .routes_detect import _owner
+    from ..identify.snapshots import get_snapshot_store
+    from ..tasks.comparison import comparison_payload
+    task = get_task(db, task_id)
+    if task is None:
+        raise HTTPException(404, '任务不存在', headers=_COMPARE_HEADERS)
+    if task['status'] != 'done':
+        raise HTTPException(409, '任务未完成或脱敏失败', headers=_COMPARE_HEADERS)
+    response.headers.update(_COMPARE_HEADERS)
+    snapshot = get_snapshot_store().get('task:' + task_id, _owner(request), settings.export_secret)
+    return comparison_payload(snapshot)
+
+
+@router.get('/tasks/{task_id}/comparison/download', summary='下载对比中的完整脱敏文本')
+def download_comparison(task_id: str, request: Request, response: Response,
+                        settings: Settings = Depends(settings_dep), db: Database = Depends(db_dep)):
+    payload = task_comparison(task_id, request, response, settings, db)
+    # 文本与对比片段逐字一致；结构化/Office 文件按解析片段顺序输出，不伪造原始排版。
+    return Response('\n'.join(s['masked'] for s in payload['segments']), media_type='text/plain; charset=utf-8',
+                    headers={**_COMPARE_HEADERS, 'Content-Disposition':
+                             'attachment; filename="flowmask-masked.txt"'})

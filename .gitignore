@@ -83,3 +83,6 @@ server/logs/
 # PyInstaller onefile 解包临时目录
 .flowmask-tmp/
 server/.flowmask-tmp/
+
+# 前端本机验证缓存
+/web/.qa/

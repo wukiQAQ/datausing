@@ -13,7 +13,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from .types import EntityType, Hit
@@ -247,11 +249,24 @@ def detect(text: str, rules: tuple[Rule, ...] | None = None) -> list[Hit]:
 
 
 _active_rules: tuple[Rule, ...] | None = None
+_scoped_rules = ContextVar('flowmask_scoped_rules', default=None)
 
 
 def active_rules() -> tuple[Rule, ...]:
     """当前生效的规则集（内置 + 数据库里启用的自定义规则）。"""
-    return _active_rules if _active_rules is not None else RULES
+    scoped = _scoped_rules.get()
+    return scoped if scoped is not None else (_active_rules if _active_rules is not None else RULES)
+
+
+@contextmanager
+def freeze_active_rules():
+    """同一次文档检测使用相同的不可变规则集，不改变其它线程的活动规则。"""
+    rules = active_rules()
+    token = _scoped_rules.set(rules)
+    try:
+        yield rules
+    finally:
+        _scoped_rules.reset(token)
 
 
 def set_active_rules(rules: tuple[Rule, ...] | None) -> None:
@@ -271,6 +286,15 @@ def dedupe_overlaps(hits: list[Hit]) -> list[Hit]:
     kept: list[Hit] = []
     for hit in ordered:
         if kept and hit.start < kept[-1].end:
+            previous = kept[-1]
+            strongest = max((previous, hit), key=lambda item: item.weight * item.confidence)
+            value = previous.value
+            if hit.end > previous.end:
+                value += hit.value[previous.end - hit.start:]
+            coverage = tuple(sorted({previous.type.value, hit.type.value,
+                                     *previous.coverage_types, *hit.coverage_types}))
+            kept[-1] = replace(strongest, start=previous.start, end=max(previous.end, hit.end),
+                               value=value, coverage_types=coverage)
             continue
         kept.append(hit)
     return kept

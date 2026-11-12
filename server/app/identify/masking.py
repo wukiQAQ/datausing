@@ -237,24 +237,25 @@ def mask_value_strategy(
         return encrypt_text(value, secret)
 
     # key == "generalize"：按类别保留结构特征
+    def safe_generalization(output: str) -> str:
+        return '[已屏蔽]' if value in output else output
     entity_key = _entity_key(entity)
     if entity_key == EntityType.ID_CARD.value:
-        return value[:6] + "********"
+        return safe_generalization(value[:6] + "********")
     if entity_key == EntityType.PHONE.value:
         if len(value) < 7:
-            return value[:2] + "****"
-        return value[:3] + "****" + value[-2:]
+            return safe_generalization(value[:2] + "****")
+        return safe_generalization(value[:3] + "****" + value[-2:])
     if entity_key == EntityType.BANK_CARD.value:
-        return "****" + value[-4:]
+        return safe_generalization("****" + value[-4:])
     if entity_key == EntityType.EMAIL.value:
         _, separator, domain = value.partition("@")
-        return "***@" + (domain if separator else "")
+        return safe_generalization("***@" + (domain if separator else ""))
     if entity_key == EntityType.NAME.value:
-        return value[0] + "*"
+        return safe_generalization(value[0] + "*")
     if entity_key == EntityType.ADDRESS.value:
-        return value[:3] + "***"
-    return f"[{_entity_label_text(entity)}]"
-
+        return safe_generalization(value[:3] + "***")
+    return safe_generalization(f"[{_entity_label_text(entity)}]")
 
 # ---- 片段级脱敏：给 spans / hits 直接用 ------------------------------------
 
@@ -271,6 +272,7 @@ def mask_spans_with_strategy(
     spans: object,
     strategy: str,
     secret: str = "",
+    mappings: list | None = None,
 ) -> str:
     """按 ``spans``（dict 或带 start/end/type 属性的对象）脱敏整段文本。
 
@@ -295,13 +297,24 @@ def mask_spans_with_strategy(
 
     parts: list[str] = []
     cursor = len(text)
+    edits = []
     for start, end, entity in sorted(cleaned, key=lambda item: item[0], reverse=True):
         if end > cursor:
             continue
         parts.append(text[end:cursor])
-        parts.append(mask_value_strategy(text[start:end], entity, key, secret))
+        replacement = mask_value_strategy(text[start:end], entity, key, secret)
+        parts.append(replacement)
+        edits.append((start, end, entity, replacement))
         cursor = start
     parts.append(text[:cursor])
+    if mappings is not None:
+        shift = 0
+        for start, end, entity, replacement in reversed(edits):
+            if replacement != text[start:end]:
+                mappings.append(dict(start=start, end=end, masked_start=start + shift,
+                                     masked_end=start + shift + len(replacement),
+                                     type=getattr(entity, 'value', entity), strategy=key))
+            shift += len(replacement) - (end - start)
     return "".join(reversed(parts))
 
 

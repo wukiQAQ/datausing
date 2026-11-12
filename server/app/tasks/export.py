@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from ..security import safe_stored_mask
+
 import csv
 import io
 import json
@@ -53,7 +55,7 @@ def _rows(db: Database, task_id: str) -> list[dict[str, Any]]:
             "SELECT * FROM findings WHERE task_id=? ORDER BY id ASC",
             (task_id,),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row, masked=safe_stored_mask(row['masked'])) for row in rows]
 
 
 def _meta(db: Database, task_id: str, total: int) -> dict[str, Any]:

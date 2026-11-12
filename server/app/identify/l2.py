@@ -1,8 +1,7 @@
-"""L2 语义识别（RoBERTa-wwm-ext）接入层。
+"""L2 语义识别客户端。
 
-模型不放在本进程里：训练/推理是一个独立的 FastAPI 服务（``inference/``，后续实现），
-本层只负责"按契约调用 + 超时熔断 + 失败降级"。这样一体机没有模型也能跑 L1-only，
-答辩现场可以现场切换“启用 L2”演示升级链路。
+模型运行在独立的 ``l2_service`` 中。客户端负责按契约发出请求并报告失败，
+流水线保留已取得的识别结果。
 
 契约（与 Go 侧 DLP 推理契约一致）：
 
@@ -14,13 +13,12 @@
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
+from math import isfinite
 from typing import Protocol
 
 from ..core.config import Settings
+from .inference import post_json
 from .types import EntityType
 
 
@@ -50,7 +48,7 @@ class SemanticClassifier(Protocol):
 
 
 class HttpSemanticClassifier:
-    """按 HTTP 契约调用 L2 服务；任何网络/协议错误都返回空列表（上层按 degraded 处理）。"""
+    """按 HTTP 契约调用 L2 服务，空命中和推理失败分别处理。"""
 
     name = "l2-roberta"
 
@@ -63,37 +61,37 @@ class HttpSemanticClassifier:
 
     def predict(self, text: str) -> list[SemanticHit]:
         payload = {"items": [{"id": "seg", "content": text[:4000]}]}
-        request = urllib.request.Request(
-            self.endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-            return []
-
-        if body.get("degraded"):
-            return []
-
+        body = post_json(self.endpoint, payload, self.timeout_s)
+        items = body.get("items")
+        if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+            raise ValueError("L2 返回的条目数量或格式不匹配")
+        item = items[0]
+        if item.get("id") != "seg" or item.get("degraded") or not isinstance(item.get("types"), list):
+            raise ValueError("L2 返回无效或降级条目")
         hits: list[SemanticHit] = []
-        for item in body.get("items", []):
-            benign = float(item.get("benign") or 0.0)
-            if benign > 0:
-                hits.append(SemanticHit(type=None, confidence=benign, benign=True))
-            for entry in item.get("types", []):
-                try:
-                    entity = EntityType(entry["type"])
-                except (KeyError, ValueError):
-                    continue
-                hits.append(SemanticHit(type=entity, confidence=float(entry.get("confidence", 0.0))))
+        benign = _confidence(item.get("benign", 0.0))
+        if benign > 0:
+            hits.append(SemanticHit(type=None, confidence=benign, benign=True))
+        for entry in item["types"]:
+            try:
+                entity = EntityType(entry["type"])
+            except ValueError:  # 兼容模型新增的类别。
+                continue
+            hits.append(SemanticHit(type=entity, confidence=_confidence(entry["confidence"])))
         return hits
 
 
+def _confidence(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("L2 置信度必须为数值")
+    if not isfinite(value) or not 0 <= value <= 1:
+        raise ValueError("L2 置信度必须位于 [0, 1]")
+    return float(value)
+
+
 def build_semantic_classifier(settings: Settings) -> SemanticClassifier | None:
-    """按配置构造 L2 识别器；未启用时返回 None（调用方据此降级）。"""
-    if not settings.enable_l2:
+    """端点决定客户端能力，默认开关由检测入口单独处理。"""
+    endpoint = settings.l2_endpoint.strip()
+    if not endpoint:
         return None
-    return HttpSemanticClassifier(settings.l2_endpoint, settings.l2_timeout_s)
+    return HttpSemanticClassifier(endpoint, settings.l2_timeout_s)

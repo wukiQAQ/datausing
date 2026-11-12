@@ -220,11 +220,18 @@ func TestDLPRejectsInvalidMinLevel(t *testing.T) {
 // blockingStore 是只阻塞 AppendFinding 的假存储，用来稳定复现"队列满丢帧"。
 type blockingStore struct {
 	gate     chan struct{}
+	entered  chan struct{}
 	mu       sync.Mutex
 	appended []storage.DLPFinding
 }
 
 func (b *blockingStore) AppendFinding(f storage.DLPFinding) error {
+	if b.entered != nil {
+		select {
+		case b.entered <- struct{}{}:
+		default:
+		}
+	}
 	<-b.gate // 一直挡住 worker，让队列被填满
 	b.mu.Lock()
 	b.appended = append(b.appended, f)
@@ -251,27 +258,31 @@ func (b *blockingStore) FindingStats(storage.FindingFilter, time.Duration) (stor
 // TestOnlineDLPCountsDroppedWhenQueueFull 验证 backpressure 语义：
 // worker 卡住时队列被填满，后续载荷必须被丢弃并计入 dlp_dropped，而不是无限堆积内存。
 func TestOnlineDLPCountsDroppedWhenQueueFull(t *testing.T) {
-	fake := &blockingStore{gate: make(chan struct{})}
+	fake := &blockingStore{gate: make(chan struct{}), entered: make(chan struct{}, 1)}
 	cfg := config.DLPConfig{Enabled: true, QueueSize: 1, Workers: 1, MaxPayload: 1024, MinLevel: "SAFE"}
 	p, err := newDLPPipeline(fake, cfg)
 	if err != nil {
 		t.Fatalf("newDLPPipeline: %v", err)
 	}
 	job := func() dlpJob {
-		return dlpJob{payload: []byte("联系电话 13800138000"), payloadBytes: 16, proto: "tcp"}
+		payload := []byte("联系电话 13800138000")
+		return dlpJob{payload: payload, payloadBytes: len(payload), proto: "tcp"}
 	}
 	p.submit(job()) // 进 worker 后被 gate 挡住
+	select {
+	case <-fake.entered: // 首项确实离开队列并进入存储，才填第二项。
+	case <-time.After(2 * time.Second):
+		close(fake.gate)
+		p.close()
+		t.Fatal("worker 未进入存储")
+	}
 	p.submit(job()) // 占满长度为 1 的队列
 	p.submit(job()) // 队列满 → 丢弃
-	deadline := time.Now().Add(2 * time.Second)
-	for p.dropped.Load() < 1 {
-		if time.Now().After(deadline) {
-			t.Fatal("队列满后没有累计丢弃")
-		}
-		time.Sleep(time.Millisecond)
-	}
 	close(fake.gate)
 	p.close()
+	if frames, dropped := p.frames.Load(), p.dropped.Load(); frames != 2 || dropped != 1 {
+		t.Errorf("提交3条应分析2条且丢弃1条，实际分析 %d、丢弃 %d", frames, dropped)
+	}
 	if hits := p.hits.Load(); hits != 2 {
 		t.Errorf("放行后应处理 2 条（1 条在 worker + 1 条在队列），实际落库 %d 条", hits)
 	}

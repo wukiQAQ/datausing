@@ -192,7 +192,8 @@ def test_audit_failure_rolls_back_findings_and_alerts(client, monkeypatch) -> No
     task = _wait_task_finished(client, created["task_id"])
 
     assert task["status"] == "failed"
-    assert "audit boom" in task["error"]
+    assert task["error"].startswith('TASK_PERSISTENCE_FAILED:')
+    assert "audit boom" not in task["error"]  # 原始异常可能包含私密载荷
     assert client.get(f"/api/v1/tasks/{created['task_id']}/findings").json()["total"] == 0
     assert client.get("/api/v1/audit").json()["total"] == 0
     assert client.get("/api/v1/alerts").json()["total"] == 0

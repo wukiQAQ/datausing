@@ -3,8 +3,7 @@
 一条 Segment 的处理顺序：L1 规则 →（可选）L2 语义 →（可选）L3 护栏 → 评分分级 → 脱敏。
 设计要点：
 
-- **算力只花在可疑数据上**：L2/L3 默认关闭；开启后也只对 L1 低置信度 / 分数落在模糊区
-  的文本调用，其余直接返回。
+- **按片段选择推理**：L2 复核有规则或 NER 命中的片段，L3 复核分数落在灰区且未直达高危的片段。
 - **失败必须降级不阻塞**：L2/L3 超时或报错时保留 L1 结论、标记 ``degraded``，
   流水线继续——推理服务不能成为单点。
 - **脱敏区间只来自 L1**：L2/L3 只提供类别级置信度与解释，无法定位字符区间，
@@ -16,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
+from collections import Counter
 from dataclasses import dataclass, field, replace
 
 from ..core.config import Settings
@@ -23,6 +23,7 @@ from ..parsers.base import Document, Segment
 from .l2 import SemanticClassifier, SemanticHit, build_semantic_classifier
 from .l3 import GuardClassifier, GuardVerdict, build_guard_classifier
 from .masking import mask
+from .rules import dedupe_overlaps
 from .ner import NerDetector, build_ner_detector, spans_to_hits
 from .normalize import map_hit_span, normalize_with_map
 from .scoring import analyze as analyze_l1
@@ -167,20 +168,17 @@ def _rebase_result(
             start, end = span
         hits.append(replace(hit, start=start, end=end))
     rebased = score(hits)
-    rebased.extra_evidence = list(result.extra_evidence)
     rebased.degraded = result.degraded
-    # L3 复核抬升的级别下限要跟着走：重算分数不能把大模型/指令裁判的判断抹掉
-    rebased.level_floor = result.level_floor
-    if result.score_scale != 1.0:
-        rebased.score_scale = result.score_scale
-        rebased.score = round(min(rebased.score * result.score_scale, 1.0), 3)
-        # 压制后沿用链路里的直接标记（已被 L2 否决时 direct=False），
-        # 否则重算会把直达高危又加回来，压制白做。
-        rebased.direct = result.direct
-        rebased.level = level_for(rebased.score, rebased.direct)
-    if rebased.level_floor.severity > rebased.level.severity:
-        rebased.level = rebased.level_floor
     return rebased
+
+
+def _failure_status(exc: Exception) -> str:
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, ConnectionError):
+        return "unavailable"
+    return "error"
+
 
 
 @dataclass(slots=True)
@@ -216,6 +214,8 @@ class SegmentFinding:
     reason: str | None = None
     # 命中区间（字符偏移 + 类别），供前端在原文上高亮；只有 L1 能给出精确区间
     spans: list[dict[str, object]] = field(default_factory=list)
+    requires_full_mask: bool = False
+    engine_runs: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -231,10 +231,12 @@ class SegmentFinding:
             "rule_ids": self.rule_ids,
             "confidence_vector": self.confidence_vector,
             "model_chain": self.model_chain,
+            "engine_runs": self.engine_runs,
             "direct": self.direct,
             "degraded": self.degraded,
             "reason": self.reason,
             "spans": self.spans,
+            "requires_full_mask": self.requires_full_mask,
         }
 
 
@@ -251,6 +253,11 @@ class DocumentReport:
     by_level: dict[str, int] = field(default_factory=dict)
     duration_ms: int = 0
     degraded: bool = False
+    engine_runs: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    @property
+    def coverage(self) -> str:
+        return "partial" if self.degraded else "complete"
 
 
 class DetectionPipeline:
@@ -281,15 +288,18 @@ class DetectionPipeline:
         all_findings: list[SegmentFinding] = []
         by_level = {level.value: 0 for level in Level}
         degraded = False
+        engine_runs = {"l2": Counter(), "l3": Counter()}
 
         # 文档级上下文：JSON/CSV/SQL 的线索词（"示例""测试"）可能不在同一个值里，
         # 传给 L2 让它按整份文档判断"这是文档示例还是真实数据"。
-        context = _document_context(document)
+        context = _document_context(document) if options.enable_l2 else None
         for segment in document.segments:
-            finding = self.analyze_segment(segment, options, l2_context=context)
+            finding, runs, segment_degraded = self._analyze_segment(segment, options, context)
+            for engine, status in runs.items():
+                engine_runs[engine][status] += 1
+            degraded = degraded or segment_degraded
             if finding is None:
                 continue
-            degraded = degraded or finding.degraded
             by_level[finding.level.value] += 1
             all_findings.append(finding)
             if finding.level.severity < options.min_level.severity:
@@ -305,6 +315,7 @@ class DetectionPipeline:
             by_level=by_level,
             duration_ms=int((time.perf_counter() - started) * 1000),
             degraded=degraded,
+            engine_runs={engine: dict(counts) for engine, counts in engine_runs.items()},
         )
 
     def analyze_text(self, text: str, options: DetectOptions) -> SegmentFinding | None:
@@ -316,6 +327,15 @@ class DetectionPipeline:
         options: DetectOptions,
         l2_context: str | None = None,
     ) -> SegmentFinding | None:
+        finding, _, _ = self._analyze_segment(segment, options, l2_context)
+        return finding
+
+    def _analyze_segment(
+        self,
+        segment: Segment,
+        options: DetectOptions,
+        l2_context: str | None,
+    ) -> tuple[SegmentFinding | None, dict[str, str], bool]:
         # 结构化数据（JSON/CSV/SQL）把字段名拼到值前面一起检测：
         # 字段名是语义上下文（"api_key"、"身份证号"、"password"），没有它，
         # 裸值只能靠形态猜，误判与漏判都会明显上升。
@@ -324,18 +344,17 @@ class DetectionPipeline:
         # 识别前先归一化（全角→半角、去掉数字之间的空格/连字符），
         # 但脱敏与落库仍以原文为准：偏移通过 index_map 映射回去
         normalized, index_map = normalize_with_map(segment.text)
-        normalized_changed = normalized != segment.text
-        result, model_chain, reason = self._run_chain(prefix + normalized, options, l2_context)
-        if prefix or normalized_changed:
-            result = _rebase_result(
-                result,
-                len(prefix),
-                index_map if normalized_changed else None,
-                len(segment.text),
-            )
+        result, model_chain, reason, engine_runs = self._run_chain(
+            prefix + normalized,
+            options,
+            l2_context,
+            shift=len(prefix),
+            index_map=index_map if normalized != segment.text else None,
+            text_length=len(segment.text),
+        )
         if not result.hits and not result.extra_evidence:
-            return None
-        return SegmentFinding(
+            return None, engine_runs, result.degraded
+        finding = SegmentFinding(
             path=segment.path,
             original_hash=sha256_text(segment.text),
             masked=mask(segment.text, result, options.mask_level),
@@ -346,9 +365,15 @@ class DetectionPipeline:
             rule_ids=result.rule_ids,
             confidence_vector=result.confidence_vector,
             model_chain=model_chain,
+            engine_runs=engine_runs,
             direct=result.direct,
             degraded=result.degraded,
             reason=reason,
+            requires_full_mask=any(
+                evidence.get('type') in {entity.value for entity in EntityType}
+                or evidence.get('type') == 'l3_guard' and str(evidence.get('risk', '')).lower() == 'unsafe'
+                for evidence in result.extra_evidence
+            ),
             # 敏感词表命中不参与高亮：它指向类别词本身，不是需要高亮的敏感值
             spans=[
                 {
@@ -357,19 +382,26 @@ class DetectionPipeline:
                     "type": hit.type.value,
                     "label": entity_label(hit.type),
                     "rule": hit.rule,
+                    "coverage_types": list(hit.coverage_types),
                 }
                 for hit in result.hits
                 if not hit.rule.startswith("kw-")
             ],
         )
 
+        return finding, engine_runs, result.degraded
+
     # ---- 内部：三级链路 -------------------------------------------------
     def _run_chain(
         self,
         text: str,
         options: DetectOptions,
-        l2_context: str | None = None,
-    ) -> tuple[Result, str, str | None]:
+        l2_context: str | None,
+        *,
+        shift: int,
+        index_map: list[int] | None,
+        text_length: int,
+    ) -> tuple[Result, str, str | None, dict[str, str]]:
         result = analyze_l1(text, enable_keywords=options.enable_keywords)
         chain = ["l1"]
         reason: str | None = None
@@ -383,70 +415,80 @@ class DetectionPipeline:
                 result.degraded = True
             if ner_hits:
                 merged = _merge_ner_hits(result.hits, ner_hits)
-                if len(merged) > len(result.hits):
+                if merged != result.hits:
+                    expanded = [(hit.start, hit.end) for hit in merged] != [
+                        (hit.start, hit.end) for hit in result.hits]
                     result = score(merged)
-                    chain.append("ner")
+                    if expanded:
+                        chain.append("ner")
 
-        if options.enable_l2 and self.semantic is not None and self.semantic.available():
-            # L2 只处理 L1 命中的样本：直达高危也要过一遍语义复核，
-            # 否则"文档里的示例证件号"这类形似误报永远压不下去。
-            if result.hits:
+        # 位置重算只处理有区间的规则/NER，后续语义证据直接并入最终分数。
+        if shift or index_map is not None:
+            result = _rebase_result(result, shift, index_map, text_length)
+
+        l2_status = "disabled"
+        if options.enable_l2:
+            if not result.hits:
+                l2_status = "skipped"
+            elif self.semantic is None or not self.semantic.available():
+                l2_status = "unavailable"
+            else:
                 try:
-                    # 文档级上下文优先：JSON/CSV 的每个值单独看没有"示例"线索，
-                    # 把整份文档的文本给 L2，才能判断"这段是文档示例还是真实数据"。
+                    # 文档级上下文可以保留单个字段之外的示例或测试线索。
                     semantic_hits = self.semantic.predict(l2_context or text)
-                except Exception:  # 推理服务异常一律降级，不打断主链路
-                    semantic_hits = []
-                    result.degraded = True
-                if semantic_hits:
-                    benign = [hit for hit in semantic_hits if hit.benign]
-                    typed = [hit for hit in semantic_hits if not hit.benign]
-                    if benign:
-                        strongest = max(hit.confidence for hit in benign)
-                        threshold = (
-                            _direct_benign_threshold()
-                            if result.direct
-                            else _benign_threshold()
-                        )
-                        if strongest >= threshold:
-                            result = _apply_l2_benign(result, strongest)
-                    if typed:
-                        result = _merge_l2(result, typed)
+                except Exception as exc:
+                    l2_status = _failure_status(exc)
+                else:
+                    l2_status = "executed"
                     chain.append("l2")
+                    strongest = max((hit.confidence for hit in semantic_hits if hit.benign), default=0)
+                    threshold = _direct_benign_threshold() if result.direct else _benign_threshold()
+                    if strongest >= threshold:
+                        result = _apply_l2_benign(result, strongest)
+                    result = _merge_l2(result, semantic_hits)
 
         ambiguous = AMBIGUOUS_MIN <= result.score < AMBIGUOUS_MAX and not result.direct
-        if options.enable_l3 and self.guard is not None and self.guard.available() and ambiguous:
-            try:
-                verdict = self.guard.judge(text)
-            except Exception:  # 大模型服务异常一律降级，不打断主链路
-                verdict = None
-                result.degraded = True
-            if verdict is None:
-                result.degraded = True
+        l3_status = "disabled"
+        verdict = None
+        if options.enable_l3:
+            if not ambiguous:
+                l3_status = "skipped"
+            elif self.guard is None or not self.guard.available():
+                l3_status = "unavailable"
             else:
-                chain.append("l3")
-                reason = verdict.reason or None
-                target = _l3_target_level(verdict, result)
-                raised = target is not None
-                if raised:
-                    result.level = target
-                    # 记录级别下限：归一化/结构化前缀会触发重算分数，不记下限会被算回去
-                    result.level_floor = target
-                result.extra_evidence.append(
-                    {
-                        "type": "l3_guard",
-                        "confidence": 1.0,
-                        "weight": 0.0,
-                        "rule": verdict.model,
-                        "risk": verdict.risk,
-                        # 模型给出的类别与分级建议都留证据：解释与消融实验都要用
-                        "categories": list(verdict.categories),
-                        "level_hint": verdict.level_hint,
-                        "raised": raised,
-                    }
-                )
+                try:
+                    verdict = self.guard.judge(text)
+                except Exception as exc:
+                    l3_status = _failure_status(exc)
+                else:
+                    l3_status = "executed" if verdict is not None else "error"
 
-        return result, ">".join(chain), reason
+        if verdict is not None:
+            chain.append("l3")
+            reason = verdict.reason or None
+            target = _l3_target_level(verdict, result)
+            raised = target is not None
+            if raised:
+                result.level = target
+            result.extra_evidence.append(
+                {
+                    "type": "l3_guard",
+                    "confidence": 1.0,
+                    "weight": 0.0,
+                    "rule": verdict.model,
+                    "risk": verdict.risk,
+                    # 模型给出的类别与分级建议都留证据：解释与消融实验都要用
+                    "categories": list(verdict.categories),
+                    "level_hint": verdict.level_hint,
+                    "raised": raised,
+                }
+            )
+
+        engine_runs = {"l2": l2_status, "l3": l3_status}
+        result.degraded = result.degraded or any(
+            status in {"unavailable", "timeout", "error"} for status in engine_runs.values()
+        )
+        return result, ">".join(chain), reason, engine_runs
 
 
 def _l3_target_level(verdict: GuardVerdict, result: Result) -> Level | None:
@@ -492,7 +534,6 @@ def _apply_l2_benign(result: Result, confidence: float) -> Result:
     if confidence < L2_BENIGN_MIN_CONFIDENCE:
         return result
     penalty = min(confidence, L2_BENIGN_MAX_PENALTY)
-    result.score_scale = round(result.score_scale * (1.0 - penalty), 4)
     result.score = round(result.score * (1.0 - penalty), 3)
     # 语义否决后取消"极端类别直达"：直达是给"宁误报勿漏报"用的兜底，
     # 既然 L2 已判定这是示例数据，就不该再靠直达把级别钉死在高危。
@@ -540,15 +581,9 @@ def _overlaps(hit: Hit, others: list[Hit]) -> bool:
 
 
 def _merge_ner_hits(l1_hits: list[Hit], ner_hits: list[Hit]) -> list[Hit]:
-    """把 NER 命中并入 L1：与已有命中重叠的一律丢弃（L1 更精确，先入为主）。
+    """把 NER 命中并入 L1：替换范围取覆盖并集，不能遗留粗区间的敏感尾部。
 
     这样"13800138000"既被手机号规则命中、又被 NER 当成数字片段时不会重复计数，
-    也不会因为 NER 的粗区间覆盖掉规则的精确区间（脱敏依赖精确区间）。
+    采用较强证据评分，并保留覆盖范围中的类别标记，供泛化策略保守处理。
     """
-    merged = list(l1_hits)
-    for hit in ner_hits:
-        if _overlaps(hit, merged):
-            continue
-        merged.append(hit)
-    merged.sort(key=lambda item: item.start)
-    return merged
+    return dedupe_overlaps(list(l1_hits) + list(ner_hits))

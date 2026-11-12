@@ -171,7 +171,10 @@ def bench_l3(endpoint: str, iterations: int = 3) -> dict[str, object] | None:
     from app.identify.l3 import HttpJudgeClassifier  # noqa: PLC0415
 
     classifier = HttpJudgeClassifier(endpoint, model="bench", timeout_s=30.0)
-    warm = classifier.judge(f"{SENSITIVE_TEXT}（预热）")
+    try:
+        warm = classifier.judge(f"{SENSITIVE_TEXT}（预热）")
+    except (OSError, ValueError):
+        warm = None
     if warm is None:
         print(f"[skip] L3 服务不可用：{endpoint}")
         return None
@@ -179,7 +182,10 @@ def bench_l3(endpoint: str, iterations: int = 3) -> dict[str, object] | None:
     risks: list[str] = []
     for index in range(iterations):
         text = f"{SENSITIVE_TEXT}（工单号 BENCH-{time.time_ns()}-{index}）"
-        elapsed, verdict = _time_ms(lambda: classifier.judge(text))
+        try:
+            elapsed, verdict = _time_ms(lambda: classifier.judge(text))
+        except (OSError, ValueError):
+            verdict = None
         if verdict is None:
             raise SystemExit(f"L3 第 {index + 1} 次调用没有拿到判定（endpoint={endpoint}）")
         samples.append(elapsed)

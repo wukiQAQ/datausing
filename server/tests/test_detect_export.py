@@ -57,7 +57,10 @@ def test_export_text_returns_download(client) -> None:
     assert disposition.startswith('attachment; filename="flowmask-export-')
     assert disposition.endswith('.txt"')
     content = response.content.decode("utf-8")
-    assert "[已屏蔽:手机号]" in content
+    # L2 语义证据会给整段打上 requires_full_mask，block 策略按「整段 → 类别占位」处理，
+    # 不再按 span 逐值替换（见 app/tasks/document_export.py 的 _masked_texts）；
+    # 整段没有单一实体类别，类别占位回落到「其他」。
+    assert content.strip() == "[已屏蔽:其他]"
     for value in (NAME, PHONE, ID_CARD, EMAIL):
         assert value not in content
 
@@ -91,7 +94,8 @@ def test_export_encrypt_then_decrypt_roundtrip(client) -> None:
     restored = client.post("/api/v1/detect/decrypt", json={"ciphertext": ciphertext})
     assert restored.status_code == 200
     body = restored.json()
-    assert body["replaced"] >= 2
+    # 整段 requires_full_mask 时只有一个密文 token，解密只替换一次
+    assert body["replaced"] >= 1
     assert body["strategy"] == "encrypt"
     assert PHONE in body["text"] and ID_CARD in body["text"]
 
@@ -114,6 +118,17 @@ def test_export_unknown_fmt_is_400(client) -> None:
     response = client.post("/api/v1/detect/export", json=_export_body(fmt="xml"))
     assert response.status_code == 400
     assert response.json()["detail"] == "不支持的输出格式"
+
+
+def test_export_text_to_structured_fmt_is_422(client) -> None:
+    """纯文本显式导成 csv/sql/json 会被拒绝：结构化格式必须与原文形态一致。
+
+    否则按目标格式重解析原文拿不到命中定位，会把未脱敏原文原样写回（历史实现曾如此）。
+    """
+    for fmt in ("csv", "sql", "json"):
+        response = client.post("/api/v1/detect/export", json=_export_body(fmt=fmt))
+        assert response.status_code == 422, fmt
+        assert PHONE not in response.text, fmt
 
 
 def test_export_invalid_content_type_is_400(client) -> None:
@@ -231,7 +246,7 @@ def test_existing_detect_endpoints_unchanged(client) -> None:
     detected = client.post("/api/v1/detect", json={"text": f"身份证号：{ID_CARD}"})
     assert detected.status_code == 200
     body = detected.json()
-    assert set(body) == {
+    assert set(body) >= {
         "content_type",
         "segments",
         "findings",
@@ -240,6 +255,7 @@ def test_existing_detect_endpoints_unchanged(client) -> None:
         "degraded",
         "masked_document",
     }
+    assert body['result_id'] and body['policy_version']
     assert ID_CARD not in json.dumps(body, ensure_ascii=False)
 
     uploaded = client.post(

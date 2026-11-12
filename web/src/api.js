@@ -1,3 +1,5 @@
+import { buildQueryString } from "./stats.js";
+
 const BASE = "/api/v1";
 
 // 服务端配了 FLOWMASK_API_TOKEN 时，所有请求都要带 Bearer；
@@ -27,7 +29,7 @@ async function request(path, options = {}) {
     if (res.status === 401) {
       detail = "缺少或错误的 API Token：请在浏览器 localStorage 设置 flowmask_token（见 README）";
     }
-    throw new Error(`${res.status} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
+    throw Object.assign(new Error(`${res.status} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`), { status: res.status });
   }
   return body;
 }
@@ -93,7 +95,7 @@ export async function downloadWithAuth(url, fallbackName) {
 // 脱敏文件导出走「带请求体的下载」：POST + JSON 或 multipart，响应是二进制附件，
 // 不能复用 request()（它会按 JSON 解析），也不能复用 downloadWithAuth（它只发 GET）。
 // 鉴权头照抄 authHeaders()，文件名优先取 Content-Disposition。
-export async function downloadWithBody(path, options, fallbackName = "flowmask-export.bin") {
+export async function downloadWithBody(path, options, fallbackName = "flowmask-export.bin", validateResponse) {
   const res = await fetch(BASE + path, { ...options, headers: authHeaders(options.headers) });
   if (!res.ok) {
     let detail = res.statusText;
@@ -106,9 +108,10 @@ export async function downloadWithBody(path, options, fallbackName = "flowmask-e
     if (res.status === 401) {
       detail = "缺少或错误的 API Token：请在浏览器 localStorage 设置 flowmask_token（见 README）";
     }
-    throw new Error(`${res.status} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
+    throw Object.assign(new Error(`${res.status} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`), { status: res.status });
   }
   const blob = await res.blob();
+  validateResponse?.(res);
   const name = fileNameFromDisposition(res.headers.get("Content-Disposition")) || fallbackName;
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -122,6 +125,13 @@ export async function downloadWithBody(path, options, fallbackName = "flowmask-e
   return name;
 }
 
+// 统计接口兼容旧调用 api.stats(taskIdString)（BatchView 还在用），也接受对象查询；
+// 其余新增接口一律对象参数，查询串统一交给 buildQueryString 处理空值/数组。
+function normalizeStatsParams(params) {
+  if (typeof params === "string") return params ? { task_id: params } : {};
+  return params && typeof params === "object" ? params : {};
+}
+
 export const api = {
   health: () => request("/health"),
   formats: () => request("/formats"),
@@ -130,8 +140,8 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     const qs = new URLSearchParams();
-    if (opts.enableL2) qs.set("enable_l2", "true");
-    if (opts.enableL3) qs.set("enable_l3", "true");
+    if (typeof opts.enableL2 === "boolean") qs.set("enable_l2", String(opts.enableL2));
+    if (typeof opts.enableL3 === "boolean") qs.set("enable_l3", String(opts.enableL3));
     if (opts.enableNer !== undefined && opts.enableNer !== null) {
       qs.set("enable_ner", opts.enableNer ? "true" : "false");
     }
@@ -146,13 +156,35 @@ export const api = {
   task: (id) => request(`/tasks/${id}`),
   taskFindings: (id, page = 1, pageSize = 50) =>
     request(`/tasks/${id}/findings?page=${page}&page_size=${pageSize}`),
+  taskComparison: (id, signal) => request(`/tasks/${id}/comparison`, { signal, cache: "no-store" }),
+  taskComparisonDownloadUrl: (id) => `${BASE}/tasks/${id}/comparison/download`,
   taskExportUrl: (id, fmt) => `${BASE}/tasks/${id}/export?format=${fmt}`,
   privacyExport: (id, epsilon, l) =>
     request(`/tasks/${id}/export/privacy?format=json&epsilon=${epsilon}&l=${l}`),
   privacyExportUrl: (id, epsilon, l) =>
     `${BASE}/tasks/${id}/export/privacy?format=jsonl&epsilon=${epsilon}&l=${l}`,
 
-  stats: (taskId) => request(`/stats${taskId ? `?task_id=${taskId}` : ""}`),
+  // 统计看板：参数含 task_id/level/types/content_type/start/end/days/tz_offset（见 web/src/stats.js）。
+  stats: (params = {}) => request(`/stats${buildQueryString(normalizeStatsParams(params))}`),
+  // 检测记录（findings）：看板「全部检测记录」与告警详情抽屉共用同一套筛选参数
+  findings: (params = {}) => request(`/findings${buildQueryString(params)}`),
+  finding: (id) => request(`/findings/${encodeURIComponent(id)}`),
+  // 风险处置队列：服务端分页 + 状态筛选（open/ack/ignored），参数与统计一致
+  alerts: (params = {}) => request(`/alerts${buildQueryString(params)}`),
+  alertSummary: (params = {}) => request(`/alerts/summary${buildQueryString(params)}`),
+  // 认领/忽略告警：操作人取自主题模块的 operator，放请求头 X-Operator-Id（与后端审计口径一致）。
+  // 这里用动态 import("./theme.js") 而非静态 import：theme.js 目前用无扩展名的 "./api" 引用本文件，
+  // Node 的 ESM 测试（api-snapshot.test.mjs）无法解析这种写法的依赖，静态 import 会让测试加载失败。
+  ackAlert: async (id, status, note) => {
+    const { operator } = await import("./theme.js");
+    const payload = { status };
+    const trimmed = note === undefined || note === null ? "" : String(note).trim();
+    if (trimmed) payload.note = trimmed.slice(0, 200);
+    return request(`/alerts/${encodeURIComponent(id)}/ack`, {
+      ...jsonBody(payload),
+      headers: { "Content-Type": "application/json", "X-Operator-Id": operator?.value || "local" },
+    });
+  },
   audit: (page = 1, pageSize = 20) => request(`/audit?page=${page}&page_size=${pageSize}`),
   auditVerify: () => request("/audit/verify"),
 
@@ -190,8 +222,8 @@ export const api = {
     const fd = new FormData();
     fd.append("pcap", file);
     const qs = new URLSearchParams();
-    if (opts.enableL2) qs.set("enable_l2", "true");
-    if (opts.enableL3) qs.set("enable_l3", "true");
+    if (typeof opts.enableL2 === "boolean") qs.set("enable_l2", String(opts.enableL2));
+    if (typeof opts.enableL3 === "boolean") qs.set("enable_l3", String(opts.enableL3));
     if (opts.maskLevel) qs.set("mask_level", opts.maskLevel);
     if (opts.minLevel) qs.set("min_level", opts.minLevel);
     return request(`/traffic/import?${qs.toString()}`, { method: "POST", body: fd });
@@ -208,8 +240,8 @@ export const api = {
     const fd = new FormData();
     for (const file of files) fd.append("files", file);
     const qs = new URLSearchParams();
-    if (opts.enableL2) qs.set("enable_l2", "true");
-    if (opts.enableL3) qs.set("enable_l3", "true");
+    if (typeof opts.enableL2 === "boolean") qs.set("enable_l2", String(opts.enableL2));
+    if (typeof opts.enableL3 === "boolean") qs.set("enable_l3", String(opts.enableL3));
     if (opts.enableNer) qs.set("enable_ner", "true");
     if (opts.maskLevel && opts.maskLevel !== "auto") qs.set("mask_level", opts.maskLevel);
     if (opts.minLevel) qs.set("min_level", opts.minLevel);
@@ -228,14 +260,28 @@ export const api = {
   // 即时检测的脱敏文件导出（文本入口）：返回二进制附件并直接触发下载
   exportDetectText: (payload, fallbackName = "flowmask-masked.txt") =>
     downloadWithBody("/detect/export", jsonBody(payload), fallbackName),
+  previewSnapshot: (result, strategy) =>
+    request(`/detect/results/${encodeURIComponent(result.result_id)}/preview`, jsonBody({
+      strategy, policy_version: result.policy_version,
+    })),
+  exportSnapshot: (result, strategy, fmt, fallbackName = "flowmask-masked.txt", isCurrent) =>
+    downloadWithBody('/detect/export', jsonBody({
+      result_id: result.result_id, policy_version: result.policy_version, strategy, fmt,
+    }), fallbackName, (response) => {
+      if ((isCurrent && !isCurrent()) ||
+          response.headers.get("X-FlowMask-Result-Id") !== result.result_id ||
+          response.headers.get("X-FlowMask-Policy-Version") !== result.policy_version) {
+        throw Object.assign(new Error("409 snapshot changed"), { status: 409 });
+      }
+    }),
   // 文件入口：multipart，字段按契约平铺（strategy/fmt/enable_l2/enable_l3/enable_ner/enable_keywords）
   exportDetectFile: (file, opts = {}, fallbackName = "flowmask-masked.bin") => {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("strategy", opts.strategy || "partial");
     fd.append("fmt", opts.fmt || "auto");
-    fd.append("enable_l2", opts.enableL2 ? "true" : "false");
-    fd.append("enable_l3", opts.enableL3 ? "true" : "false");
+    if (typeof opts.enableL2 === "boolean") fd.append("enable_l2", String(opts.enableL2));
+    if (typeof opts.enableL3 === "boolean") fd.append("enable_l3", String(opts.enableL3));
     fd.append("enable_ner", opts.enableNer ? "true" : "false");
     if (opts.enableKeywords !== undefined && opts.enableKeywords !== null) {
       fd.append("enable_keywords", opts.enableKeywords ? "true" : "false");
@@ -253,5 +299,5 @@ export const api = {
   fetchAssistantModels: () => request("/assistant/models"),
 };
 
-export const LEVEL_COLORS = { L3: "#dc2626", L2: "#ea580c", L1: "#d97706", SAFE: "#0d9488" };
+export const LEVEL_COLORS = { L3: "#cf4b62", L2: "#b87927", L1: "#548bd0", SAFE: "#26996e" };
 export const LEVEL_LABELS = { L3: "高危", L2: "中危", L1: "低危", SAFE: "安全" };

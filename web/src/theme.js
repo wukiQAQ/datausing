@@ -34,7 +34,9 @@ function cacheKey() {
 
 function storedTheme() {
   const value = readLocal(cacheKey());
-  return value === "dark" || value === "light" || value === "system" ? value : null;
+  return value === "dark" || value === "light" || value === "system"
+    ? value
+    : null;
 }
 
 function systemTheme() {
@@ -69,7 +71,8 @@ function paint(mode) {
 }
 
 export function applyTheme(next) {
-  const mode = next === "dark" || next === "light" || next === "system" ? next : "light";
+  const mode =
+    next === "dark" || next === "light" || next === "system" ? next : "light";
   const value = paint(mode);
   writeLocal(cacheKey(), mode);
   return value;
@@ -94,6 +97,8 @@ export function setOperator(next) {
 
 // 服务端偏好优先：有个人选择就用它，没有就用服务端默认主题（system 时跟随系统）
 export async function syncThemeFromServer() {
+  const forced = queryTheme();
+  if (forced) return { theme: paint(forced), source: "preview" };
   try {
     const body = await api.preferences(operator.value);
     if (body.theme) {
@@ -113,8 +118,11 @@ export function initTheme() {
   operator.value = readLocal(OPERATOR_KEY) || DEFAULT_OPERATOR;
   // 演示/截图：/app/?operator=alice 可直接以某个用户身份打开（不写本地存储）
   try {
-    const fromQuery = new URLSearchParams(window.location.search).get("operator");
-    if (fromQuery) operator.value = fromQuery.trim().slice(0, 64) || DEFAULT_OPERATOR;
+    const fromQuery = new URLSearchParams(window.location.search).get(
+      "operator",
+    );
+    if (fromQuery)
+      operator.value = fromQuery.trim().slice(0, 64) || DEFAULT_OPERATOR;
   } catch {
     /* 老浏览器没有 URLSearchParams 也无妨 */
   }
@@ -127,7 +135,8 @@ export function initTheme() {
   }
   try {
     window.matchMedia(DARK_QUERY).addEventListener("change", (event) => {
-      if (!forced && storedTheme() === "system") paint(event.matches ? "dark" : "light");
+      if (!forced && storedTheme() === "system")
+        paint(event.matches ? "dark" : "light");
     });
   } catch {
     /* 老浏览器没有 addEventListener，忽略即可 */
@@ -143,7 +152,9 @@ export function watchTheme(handler) {
 // 读 style.css 里的主题变量，避免 JS 里再写一份颜色
 export function cssVar(name, fallback = "") {
   try {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
     return value || fallback;
   } catch {
     return fallback;

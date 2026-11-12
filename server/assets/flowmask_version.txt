@@ -3,8 +3,8 @@
 # FileVersion 必须与 app/__init__.py 的 __version__ 保持一致（tests/test_desktop.py 有断言）。
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(0, 26, 0, 0),
-    prodvers=(0, 26, 0, 0),
+    filevers=(0, 27, 2, 0),
+    prodvers=(0, 27, 2, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -19,12 +19,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'FlowMask'),
           StringStruct('FileDescription', 'FlowMask 分级脱敏与审计溯源'),
-          StringStruct('FileVersion', '0.26.0.0'),
+          StringStruct('FileVersion', '0.27.2.0'),
           StringStruct('InternalName', 'FlowMask'),
           StringStruct('LegalCopyright', 'Copyright (C) 2026 FlowMask'),
           StringStruct('OriginalFilename', 'FlowMask.exe'),
           StringStruct('ProductName', 'FlowMask'),
-          StringStruct('ProductVersion', '0.26.0.0'),
+          StringStruct('ProductVersion', '0.27.2.0'),
           StringStruct('Comments', '本机一体机：文档与流量敏感数据分级脱敏、可审计溯源')
         ]
       )

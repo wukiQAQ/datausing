@@ -18,9 +18,9 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .api.deps import require_token
@@ -40,9 +40,12 @@ from .api.routes_stats import router as stats_router
 from .api.routes_tasks import router as tasks_router
 from .api.routes_traffic import router as traffic_router
 from .core.paths import frontend_dir, resource_root
+from .core.staticfiles import FrontendStaticFiles
 from .core.config import get_settings
 from .core.db import get_database
 from .plugins import load_plugins
+from .security import SecurityError, security_error_response, validation_error_response
+from .identify.snapshots import get_snapshot_store
 from .traffic.live import get_live_manager
 
 # 自带单页控制台随包分发：开发态是 server/app/webui，打包后是解包目录下的 app/webui
@@ -70,10 +73,12 @@ FlowMask：网络与文档流量的分级脱敏与审计溯源系统（数据安
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """应用退出时停掉所有实时跟随线程，避免残留线程继续写库。"""
+    get_snapshot_store().start()
     try:
         yield
     finally:
         get_live_manager().stop_all()
+        get_snapshot_store().close()
 
 
 def create_app() -> FastAPI:
@@ -104,6 +109,8 @@ def create_app() -> FastAPI:
             {"name": "preferences", "description": "用户偏好（主题）与多用户记忆"},
         ],
     )
+    app.add_exception_handler(SecurityError, security_error_response)
+    app.add_exception_handler(RequestValidationError, validation_error_response)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -133,14 +140,15 @@ def create_app() -> FastAPI:
     app.include_router(router)
 
     # 正式前端：Vue3 + Element Plus + ECharts，构建产物挂在 /app
-    # （vite base=/app/，所以刷新/深链都不会 404）
+    # （vite base=/app/，所以刷新/深链都不会 404；入口 HTML 走 no-cache，
+    #  带哈希的 assets/ 走一年 immutable，重新构建后刷新即可见新版）
     if FRONTEND_DIR.is_dir():
-        app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+        app.mount("/app", FrontendStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
     # 自带控制台：纯静态单页（无构建步骤、无外网依赖），评委打开根路径即可用；
     # 打包时若单页资源缺失也不至于让进程起不来（/app 或 /docs 仍可用）
     if WEBUI_DIR.is_dir():
-        app.mount("/ui", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
+        app.mount("/ui", FrontendStaticFiles(directory=WEBUI_DIR, html=True), name="webui")
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:

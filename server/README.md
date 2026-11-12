@@ -356,7 +356,7 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/scenarios` | 使用场景模板（7 个；检测页「使用场景」与 AI 推荐共用） |
 | GET | `/assistant/health` / `/assistant/models` | 本地 AI 助手状态 / 本机模型列表（ollama） |
 | POST | `/assistant/suggest` | 推荐脱敏方案（只传场景/字段名/计数/用途说明，不传敏感值） |
-| POST | `/assistant/advise` | 按聚合统计做风险研判（看板用） |
+| POST | `/assistant/advise` | 按聚合统计做风险研判（看板用；可带筛选范围与告警处置汇总，响应 `source` 区分规则分析/本机模型/回退） |
 | GET | `/formats` | 支持的格式、已接入/待接入、各格式是否可用 |
 | GET | `/traffic/formats` | 流量导入支持的格式与限制（pcap/pcapng、上传上限） |
 | POST | `/traffic/import` | 上传 pcap：解析 HTTP 正文并创建检测任务（201 + 任务 ID 与解析统计） |
@@ -373,10 +373,10 @@ python -m app.evaluate     # 默认 L1 only，几秒钟出结果
 | GET | `/tasks/{id}/findings` | 任务结果（`level`/`page`/`page_size`） |
 | GET | `/tasks/{id}/export?format=jsonl\|json\|csv\|sql` | 导出脱敏结果 |
 | GET | `/tasks/{id}/export/privacy?format=jsonl\|json&epsilon=&l=` | 隐私增强导出（DP 计数 + l-多样性） |
-| GET | `/findings` / `/findings/{id}` | 全量结果查询 |
-| GET | `/stats` | 看板：分级分布、类别 TopN、评分直方图 |
-| GET | `/alerts` | 分级告警列表（`task_id`/`level`/`status`/`page`/`page_size`） |
-| GET | `/alerts/summary` | 告警汇总（总数、待处理数、按级别/状态分布） |
+| GET | `/findings` / `/findings/{id}` | 全量结果查询（`task_id`/`level`/`types`/`content_type`/`start`/`end`/`days`/`tz_offset`/`page`/`page_size`） |
+| GET | `/stats` | 看板：筛选内分级分布、类别 TopN、评分直方图、按日趋势、风险处置汇总与筛选维度（`level`/`types`/`content_type`/`task_id`/`start`/`end`/`days`/`tz_offset`；旧字段兼容） |
+| GET | `/alerts` | 分级告警列表（`task_id`/`level`/`status`/`types`/`content_type`/`start`/`end`/`days`/`tz_offset`/`page`/`page_size`） |
+| GET | `/alerts/summary` | 告警汇总（总数、待处理数、已处理数与比例、按级别/状态分布、同一套筛选参数） |
 | GET | `/alerts/{id}` | 告警详情（含脱敏建议与来源 finding） |
 | POST | `/alerts/{id}/ack` | 认领/忽略/重置告警（`{status: ack\|ignored\|open, note?}`，按 `X-Operator-Id` 留痕） |
 | GET/POST/PATCH/DELETE | `/rules` `/rules/{id}` | 规则查询、新增、启停、删除（内置规则可启停不可删） |

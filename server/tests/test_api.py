@@ -20,6 +20,62 @@ def _wait_done(client, task_id: str, timeout: float = 5.0) -> dict:
     raise AssertionError("任务在超时时间内未完成")
 
 
+def test_detection_model_switches_override_defaults(tmp_env, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.core.config import get_settings
+    from app.identify.l2 import HttpSemanticClassifier
+    from app.identify.l3 import GuardVerdict, HttpJudgeClassifier
+    from app.main import create_app
+
+    calls = []
+
+    def predict(self, text):
+        calls.append("l2")
+        return []
+
+    def judge(self, text):
+        calls.append("l3")
+        return GuardVerdict(risk="Safe", reason="", model="test")
+
+    monkeypatch.setenv("FLOWMASK_ENABLE_L2", "1")
+    monkeypatch.setenv("FLOWMASK_ENABLE_L3", "0")
+    get_settings.cache_clear()
+    monkeypatch.setattr(HttpSemanticClassifier, "predict", predict)
+    monkeypatch.setattr(HttpJudgeClassifier, "judge", judge)
+    text = "联系 13800138000"
+    with TestClient(create_app()) as client:
+        response = client.post("/api/v1/detect", json={
+            "text": text, "enable_l2": False, "enable_l3": True,
+        })
+        assert response.status_code == 200
+        result = response.json()
+        assert calls == ["l3"]
+        assert result["effective_options"]["enable_l2"] is False
+        assert result["effective_options"]["enable_l3"] is True
+        assert result["engine_runs"] == {"l2": {"disabled": 1}, "l3": {"executed": 1}}
+        assert result["findings"][0]["engine_runs"] == {"l2": "disabled", "l3": "executed"}
+        assert result["coverage"] == "complete"
+
+        calls.clear()
+        result = client.post("/api/v1/detect", json={"text": text}).json()
+        assert calls == ["l2"]
+        assert result["effective_options"]["enable_l2"] is True
+
+        calls.clear()
+        result = client.post(
+            "/api/v1/detect/file", params={"enable_l2": "false"},
+            files={"file": ("sample.txt", text.encode())},
+        ).json()
+        assert result["effective_options"]["enable_l2"] is False
+        assert calls == []
+
+        response = client.post("/api/v1/tasks/text", json={"text": text, "enable_l2": False})
+        task = _wait_done(client, response.json()["task_id"])
+        assert task["options"]["enable_l2"] is False
+        assert calls == []
+
+
 def test_health(client) -> None:
     body = client.get("/api/v1/health").json()
     assert body["status"] == "ok" and body["version"]
